@@ -1,4 +1,5 @@
-"""This script runs the `HessianFree` optimizer on a small test problem."""
+"""This script runs the `HessianFree` optimizer on the DeepOBS 
+`cifar100_allcnnc` test problem."""
 
 import torch
 from config.paths import DATA_DIR

@@ -4,8 +4,8 @@ Here, we provide a PyTorch implementation of the Hessian-free optimizer as
 described in [1] and [2]. The `pytorch-hessianfree`
 [repo](https://github.com/fmeirinhos/pytorch-hessianfree/blob/master/hessianfree.py)
 by GitHub-user `fmeirinhos` served as a starting point. For the matrix-vector
-products with the Hessian or GGN, we use functionality from the BackPACK package
-[3].
+products with the Hessian or GGN, we use functionality from the BackPACK
+[package](https://backpack.pt/) [3].
 
 
 
