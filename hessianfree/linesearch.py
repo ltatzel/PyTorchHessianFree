@@ -16,9 +16,9 @@ def simple_linesearch(
     verbose=False,
 ):
     """Iteratively reduce the scale of the update vector `step` by the factor
-    `beta`, until the target function `f` is decreased "significantly". More
-    precisely, `alpha` is chosen as step size if `f(alpha * step) <= f(0) +
-    alpha * c * f_grad_0^T * step`.
+    `beta`, until the target function `f` is decreased "significantly" (Armijo
+    condition). More precisely, `alpha` is chosen as step size if
+    `f(alpha * step) <= f(0) + alpha * c * f_grad_0^T * step`.
 
     Args:
         f (callable): Target function: Maps a step `step` to the corresonding
