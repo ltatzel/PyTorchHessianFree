@@ -19,11 +19,13 @@ class HessianFree(torch.optim.Optimizer):
     def __init__(
         self,
         params,
-        lr=1,
+        curvature_opt="ggn",
         damping=1.0,
         adapt_damping=True,
         cg_max_iter=250,
-        curvature_opt="ggn",
+        use_cg_backtracking=True,
+        lr=1.0,
+        use_linesearch=True,
         verbose=False,
     ):
         """TODO
@@ -33,37 +35,41 @@ class HessianFree(torch.optim.Optimizer):
                 The default value `250` is taken from the report [1, p. 36]. If
                 `None` is used, this parameter is set to the dimension of the
                 linear system.
-            lr (float or None, optional): If `lr=None`, we perform a
-                line-search.
+            lr (float, optional): If `use_linesearch == False`, use the constant
+                learning rate, otherwise use it as initial scaling for the line
+                search.
             damping (float, optional): If `0.0`, it won't get adapted
         """
 
-        # Check given hyper-parameters
-        if lr is not None and lr < 0.0:
-            raise ValueError(f"Invalid learning rate lr = {lr}")
+        # Curvature option
+        if curvature_opt not in ["hessian", "ggn"]:
+            raise ValueError(f"Invalid curvature_opt = {curvature_opt}")
 
+        # Damping
         if damping < 0.0:
             raise ValueError(f"Invalid damping = {damping}")
-
         self.adapt_damping = adapt_damping
+
         if damping == 0.0 and adapt_damping:
             self.adapt_damping = False
             warn("The damping is set to 0.0 and won't get adapted.")
 
+        # Hypterparameters for cg
         if cg_max_iter is not None and cg_max_iter < 1:
             raise ValueError(f"Invalid cg_max_iter: {cg_max_iter}")
+        self.use_cg_backtracking = use_cg_backtracking
 
-        if curvature_opt not in ["hessian", "ggn"]:
-            raise ValueError(f"Invalid curvature_opt = {curvature_opt}")
-
-        self.verbose = verbose
+        # Learing rate
+        if lr < 0.0:
+            raise ValueError(f"Invalid learning rate lr = {lr}")
+        self.use_linesearch = use_linesearch
 
         # Call parent class constructor
         defaults = dict(
-            lr=lr,
+            curvature_opt=curvature_opt,
             damping=damping,
             cg_max_iter=cg_max_iter,
-            curvature_opt=curvature_opt,
+            lr=lr,
         )
         super().__init__(params, defaults)
 
@@ -72,6 +78,7 @@ class HessianFree(torch.optim.Optimizer):
             error_msg = "`HessianFree` does not support per-parameter options."
             raise ValueError(error_msg)
 
+        self.verbose = verbose
         self._group = self.param_groups[0]
         self._params = self._group["params"]
 
@@ -140,6 +147,7 @@ class HessianFree(torch.optim.Optimizer):
             store_x_at_iters=None,  # use automatic grid
             verbose=self.verbose,
         )
+        step_vec = x_iters[-1]
 
         # ----------------------------------------------------------------------
         # Define target function
@@ -167,30 +175,29 @@ class HessianFree(torch.optim.Optimizer):
         # ----------------------------------------------------------------------
         # Backtracking cg-iterations
         # ----------------------------------------------------------------------
-        best_cg_iter, _ = cg_efficient_backtracking(
-            f=tfunc,
-            steps_list=x_iters,
-            verbose=self.verbose,
-        )
-        step_vec = x_iters[best_cg_iter]
+        if self.use_cg_backtracking:
+            best_cg_iter, _ = cg_efficient_backtracking(
+                f=tfunc,
+                steps_list=x_iters,
+                verbose=self.verbose,
+            )
+            step_vec = x_iters[best_cg_iter]
 
         # ----------------------------------------------------------------------
         # Line-search
         # ----------------------------------------------------------------------
         lr = self._group["lr"]
 
-        # Constant learning rate
-        if lr is not None:
+        if not self.use_linesearch:  # Constant learning rate
             lr = float(lr)
             if self.verbose:
                 print(f"\nConstant lr = {lr:.6f}")
-
-        # Perform line search
-        else:
+        else:  # Perform line search
             lr, _ = simple_linesearch(
                 f=tfunc,
                 f_grad_0=loss_grad,
                 step=step_vec,
+                init_alpha=float(lr),
                 verbose=self.verbose,
             )
 
