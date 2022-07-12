@@ -10,3 +10,6 @@
 **.egg-info
 **.mypy_cache
 **__pycache__
+
+# DeepOBS data
+data_deepobs/

@@ -1,11 +1,8 @@
-"""This script runs the `HessianFree` optimizer on the DeepOBS 
+"""This script runs the `HessianFree` optimizer on the DeepOBS
 `cifar100_allcnnc` test problem."""
 
 import torch
-from config.paths import DATA_DIR
-from deepobs.config import set_data_dir
 from deepobs.pytorch.runners.runner import PTRunner
-
 from hessianfree.optimizer import HessianFree
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -13,15 +10,15 @@ CURVATURE_OPT = "ggn"  # "hessian" or "ggn"
 DAMPING = 1e-3
 
 
-def get_test_problem():
+def get_cifar100_testproblem():
     """Set-up test problem. Return the model, data and loss function."""
 
-    set_data_dir(DATA_DIR)
+    # set_data_dir(DATA_DIR)
 
     # Create testproblem
     tproblem = PTRunner.create_testproblem(
         testproblem="cifar100_allcnnc",
-        batch_size=128,
+        batch_size=32,
         l2_reg=None,
         random_seed=0,
     )
@@ -41,8 +38,8 @@ if __name__ == "__main__":
 
     print(f"\nRunning on DEVICE = {DEVICE}")
 
-    # Get problem
-    model, data, loss_function = get_test_problem()
+    # Get problem, move to `DEVICE`
+    model, data, loss_function = get_cifar100_testproblem()
     model.to(DEVICE)
     inputs, targets = data[0].to(DEVICE), data[1].to(DEVICE)
 
@@ -51,7 +48,7 @@ if __name__ == "__main__":
         loss = loss_function(outputs, targets)
         return loss, outputs
 
-    opt = HessianFree(model.parameters(), verbose=True, lr=None)
+    opt = HessianFree(model.parameters(), verbose=True)
     for step_idx in range(2):
-        print(f"\n========== STEP {step_idx} ==========")
+        print(f"\n===== STEP {step_idx} =====")
         opt.step(eval_loss_and_outputs)
