@@ -1,3 +1,5 @@
+"""This file contains some auxiliary functions."""
+
 import torch
 
 
@@ -14,7 +16,7 @@ def get_linear_system(dim, seed=0, device="cpu"):
     return A.to(device), b.to(device), x.to(device)
 
 
-def get_test_problem(freeze_first_layer=False, device="cpu"):
+def get_small_nn_testproblem(freeze_first_layer=False, device="cpu"):
     """Set-up test problem. Return the model, data and loss function."""
 
     N = 16
@@ -44,3 +46,19 @@ def get_test_problem(freeze_first_layer=False, device="cpu"):
     loss_function = torch.nn.MSELoss(reduction="mean")
 
     return model.to(device), (X.to(device), y.to(device)), loss_function
+
+
+class TargetFuncModel:
+    """Set up a "model" that holds a target function and some parameters."""
+
+    def __init__(self, target_func, init_params):
+        self.target_func = target_func
+        self.init_params = init_params
+        self.params = init_params.clone().detach().requires_grad_(True)
+
+    def parameters(self):
+        return self.params
+
+    def eval_loss(self):
+        p = self.params
+        return self.target_func(p)

@@ -4,7 +4,11 @@ import pytest
 import torch
 
 from hessianfree.optimizer import HessianFree
-from test_utils import get_linear_system, get_test_problem
+from test_utils import (
+    get_linear_system,
+    get_small_nn_testproblem,
+    TargetFuncModel,
+)
 
 SEEDS = [0, 1, 42]
 SEEDS_IDS = [f"seed = {s}" for s in SEEDS]
@@ -27,12 +31,12 @@ def test_on_neural_network(seed, curvature_opt, device):
     checks are applied.
     """
 
-    print("\nTesting `HessianFree` on a small neural network")
-    print(f"(seed = {seed}, curvature_opt = {curvature_opt})")
+    msg = f"seed={seed}, curvature_opt={curvature_opt}, device={device}"
+    print("\n===== TEST `HessianFree` on a small neural network =====\n" + msg)
 
     # Create test problem
     torch.manual_seed(seed)
-    model, data, loss_function = get_test_problem(
+    model, data, loss_function = get_small_nn_testproblem(
         freeze_first_layer=True, device=device
     )
     inputs, targets = data
@@ -48,17 +52,16 @@ def test_on_neural_network(seed, curvature_opt, device):
         model.parameters(),
         curvature_opt=curvature_opt,
         damping=damping,
-        adapt_damping=True,
         verbose=True,
     )
 
     # Perform some update steps
     for step_idx in range(3):
-        print(f"\n========== STEP {step_idx} ==========")
+        print(f"\n===== STEP {step_idx} =====")
         opt.step(eval_loss_and_outputs)
 
 
-DIMS = [3, 10, 100]
+DIMS = [3, 5, 10]
 DIMS_IDS = [f"dim = {d}" for d in DIMS]
 
 
@@ -69,37 +72,29 @@ def test_on_quadratic(seed, dim, device):
     """This function sets up and runs the `HessianFree` optimizer on a quadratic
     function. In this particular case, it has to converge in a single Newton
     step.
+
+    NOTE: This test case is resticted to lower dimensions because for
+    `dim > 10`, Martens' convergence criterion is triggered in `cg` which
+    prevents `cg` from running until actual convergence.
     """
 
-    print("\nTesting `HessianFree` on a quadratic")
-    print(f"(seed = {seed}, dim = {dim})")
+    msg = f"seed={seed}, dim={dim}, device={device}"
+    print("\n===== TEST `HessianFree` on a quadratic =====\n" + msg)
 
     # Create test problem
     torch.manual_seed(seed)
-    dim = 3
     init_params = (torch.rand((dim, 1)) - 0.5).to(device)
 
     A, b, _ = get_linear_system(dim, seed=seed, device=device)
-    b = b.reshape(dim, 1)
     assert torch.all(torch.linalg.eigvalsh(A) > 0), "Matrix A is not pos. def."
+    b = b.reshape(dim, 1)
     c = (torch.rand(1) - 0.5).to(device)
 
-    # Create model that holds the parameters
-    class Model:
-        def __init__(self, init_params):
-            self.init_params = init_params
-            self.params = init_params.clone().detach().requires_grad_(True)
+    def quadratic(x):
+        return 0.5 * x.T @ A @ x + x.T @ b + c
 
-        def eval_loss(self):
-            p = self.params
-            return 0.5 * p.T @ A @ p + p.T @ b + c
-
-        def get_opt_params(self):
-            """Return the optimal parameters (argmin of loss)."""
-            return torch.linalg.solve(A, -b)
-
-    model = Model(init_params)
-    opt_params = model.get_opt_params()
+    model = TargetFuncModel(quadratic, init_params)
+    opt_params = torch.linalg.solve(A, -b)
     print("\nopt_params = ", opt_params.T)
 
     def eval_loss_and_outputs():
@@ -109,9 +104,11 @@ def test_on_quadratic(seed, dim, device):
     opt = HessianFree(
         [model.params],
         curvature_opt="hessian",  # use the Hessian
+        lr=1.0,
+        use_linesearch=False,  # fixed lerning rate
         damping=0.0,  # no damping
         adapt_damping=False,
-        lr=1.0,  # fixed lerning rate
+        use_cg_backtracking=False,  # no cg-backtracking
         verbose=True,
     )
 
@@ -131,17 +128,6 @@ def test_on_quadratic(seed, dim, device):
 
 if __name__ == "__main__":
 
-    for seed in SEEDS:
-        test_on_neural_network(seed=0, curvature_opt="hessian", device="cpu")
-        test_on_neural_network(seed=0, curvature_opt="ggn", device="cpu")
-
-        for dim in DIMS:
-            test_on_quadratic(seed=0, dim=dim, device="cpu")
-
-
-"""
-FURTHER TEST IDEAS:
--------------------
-- CI tests on different (DeepOBS) testproblems
-- CG with one iteration should correspond to SGD
-"""
+    test_on_neural_network(seed=0, curvature_opt="hessian", device="cpu")
+    test_on_neural_network(seed=0, curvature_opt="ggn", device="cpu")
+    test_on_quadratic(seed=0, dim=5, device="cpu")

@@ -1,4 +1,4 @@
-"""Test the cg method used by the `HessianFree` optimizer."""
+"""Test the cg-method used by the `HessianFree` optimizer."""
 
 import pytest
 import torch
@@ -35,8 +35,8 @@ def test_cg_residuals(seed, dim, tol, atol, device):
     tolerances.
     """
 
-    msg = f"seed = {seed}, dim = {dim}, tol = {tol}, atol = {atol}"
-    print("\ntest_cg_x_iters with " + msg)
+    msg = f"seed={seed}, dim={dim}, tol={tol}, atol={atol}, device={device}"
+    print("\n===== RUN `test_cg_x_iters` =====\nwith " + msg)
 
     # Define problem
     A, b, x_exact = get_linear_system(dim, seed=seed, device=device)
@@ -78,11 +78,12 @@ ATOL = 1e-6
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
 def test_cg_m_iters(seed, dim, device):
     """Apply cg (without preconditioning) to a randomly chosen linear system.
-    The output `m_iters` should correspond to the quadratic
+    The output `m_iters` has to correspond to evaluations of the quadratic
     `0.5 x^T A x - b^T x`.
     """
 
-    print(f"\ntest_cg_m_iters with seed = {seed}, dim = {dim}...")
+    msg = f"seed={seed}, dim={dim}, device={device}"
+    print("\n===== RUN `test_cg_m_iters` =====\nwith " + msg)
 
     # Define problem
     A, b, _ = get_linear_system(dim, seed=seed, device=device)
@@ -124,11 +125,12 @@ def test_pcg(seed, dim, device):
     the identity matrix and the inverse of the system matrix `A` of the linear
     system. We make sure that the first two cases yield the same result and that
     the third case converges in not more than 2 iterations (theoretically, it
-    should be one, but for large `dim`, an additional iteration is needed to
-    achieve convergence).
+    should be one, but for large `dim`, an additional iteration seems to be
+    needed to achieve convergence).
     """
 
-    print(f"\ntest_pcg with seed = {seed}, dim = {dim}...")
+    msg = f"seed={seed}, dim={dim}, device={device}"
+    print("\n===== RUN `test_pcg` =====\nwith " + msg)
 
     # Define problem, compute inverse
     A, b, x_exact = get_linear_system(dim, seed=seed, device=device)
