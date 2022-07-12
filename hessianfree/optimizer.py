@@ -23,6 +23,7 @@ class HessianFree(torch.optim.Optimizer):
         damping=1.0,
         adapt_damping=True,
         cg_max_iter=250,
+        cg_decay_x0=0.95,
         use_cg_backtracking=True,
         lr=1.0,
         use_linesearch=True,
@@ -38,7 +39,9 @@ class HessianFree(torch.optim.Optimizer):
             lr (float, optional): If `use_linesearch == False`, use the constant
                 learning rate, otherwise use it as initial scaling for the line
                 search.
-            damping (float, optional): If `0.0`, it won't get adapted
+            damping (float, optional): Tikhonov damping: If `0.0`, it won't get
+                adapted
+            cg_decay_x0: From [2, Section 10]
         """
 
         # Curvature option
@@ -52,11 +55,12 @@ class HessianFree(torch.optim.Optimizer):
 
         if damping == 0.0 and adapt_damping:
             self.adapt_damping = False
-            warn("The damping is set to 0.0 and won't get adapted.")
+            warn("The damping is set to `0.0` and won't get adapted.")
 
         # Hypterparameters for cg
         if cg_max_iter is not None and cg_max_iter < 1:
             raise ValueError(f"Invalid cg_max_iter: {cg_max_iter}")
+        self.cg_decay_x0 = cg_decay_x0
         self.use_cg_backtracking = use_cg_backtracking
 
         # Learing rate
@@ -84,6 +88,9 @@ class HessianFree(torch.optim.Optimizer):
 
     def step(self, eval_loss_and_outputs):
         """TODO"""
+
+        # Set state
+        self.state.setdefault("x0", None)
 
         # ----------------------------------------------------------------------
         # Print some information
@@ -142,12 +149,16 @@ class HessianFree(torch.optim.Optimizer):
         x_iters, m_iters = cg(
             A=lambda x: A_func(x) + damping * x,  # add damping
             b=-loss_grad,
+            x0=self.state["x0"],
             max_iter=cg_max_iter,
             martens_conv_crit=True,
             store_x_at_iters=None,  # use automatic grid
             verbose=self.verbose,
         )
         step_vec = x_iters[-1]
+
+        # Initialize the next cg-run with the decayed current solution
+        self._set_x0(self.cg_decay_x0 * x_iters[-1])
 
         # ----------------------------------------------------------------------
         # Define target function
@@ -239,6 +250,9 @@ class HessianFree(torch.optim.Optimizer):
         update step) and the improvement predicted by the quadratic model. Note
         that this method changes the `self._group["damping"]` attribute.
 
+        If a negative reduction ratio is detected, we raise a warning and set
+        the initial `x0` used by the cg-method in the next step to `None`.
+
         Args:
             f_0, f_step: The target function value at `0` (no update step, i.e.
                 at the initial parameters) and at `step` (i.e. when applying the
@@ -263,10 +277,22 @@ class HessianFree(torch.optim.Optimizer):
             damping = self._group["damping"]
             print(f"  Damping is set to {damping:.6f}")
 
-        if rho < 0:  # Bad initialization
-            msg = "The reduction ratio rho is < 0. This might result in a bad "
-            msg += "cg-initialization in the next step."
+        if rho < 0:  # Bad cg-initialization
+            msg = "The reduction ratio `rho` is < 0. This might result in a "
+            msg += "bad cg-initialization in the next step. We thus use "
+            msg += "`x0 = None` instead."
             warn(msg)
+            self._set_x0(None)
+
+    def _set_x0(self, new_x0):
+        """Set the "x0" value in the state dictionary to `new_x0`. This will be
+        used as initialization for the cg-method.
+
+        Args:
+            new_x0 (torch.Tensor): The new value for `x0`, which is used to
+                initialize the cg-method.
+        """
+        self.state["x0"] = new_x0
 
 
 # # The empirical Fisher diagonal (Section 20.11.3)
