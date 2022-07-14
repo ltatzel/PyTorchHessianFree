@@ -2,7 +2,7 @@
 
 import torch
 from backpack import backpack, extend
-from backpack.extensions import SumGradSquared, DiagGGNExact
+from backpack.extensions import SumGradSquared
 from torch.nn.utils.convert_parameters import parameters_to_vector
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,7 +112,7 @@ def diag_to_preconditioner(diag_vec, damping, exponent=0.75):
         exponent (float): Scalar exponent (denoted by alpha in [1, Section 4.7])
 
     Returns:
-        A function that computes M^-1 * x (by using the vector representation,
+        A function that computes `M^-1 * x` (by using the vector representation,
         i.e. without building the matrix in memory explicitly).
     """
 

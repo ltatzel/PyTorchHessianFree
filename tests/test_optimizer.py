@@ -2,12 +2,13 @@
 
 import pytest
 import torch
-
 from hessianfree.optimizer import HessianFree
+from hessianfree.preconditioners import diag_EF_backpack, diag_to_preconditioner
+
 from test_utils import (
+    TargetFuncModel,
     get_linear_system,
     get_small_nn_testproblem,
-    TargetFuncModel,
 )
 
 SEEDS = [0, 1, 42]
@@ -15,6 +16,9 @@ SEEDS_IDS = [f"seed = {s}" for s in SEEDS]
 
 CURV_OPTS = ["hessian", "ggn"]
 CURV_OPTS_IDS = [f"curvature_opt = {c}" for c in CURV_OPTS]
+
+PRECON = [True, False]
+PRECON_IDS = [f"preconditioning = {p}" for p in PRECON]
 
 DEVICES = ["cpu"]
 if torch.cuda.is_available():
@@ -24,8 +28,9 @@ DEVICES_IDS = [f"device = {d}" for d in DEVICES]
 
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
 @pytest.mark.parametrize("curvature_opt", CURV_OPTS, ids=CURV_OPTS_IDS)
+@pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
-def test_on_neural_network(seed, curvature_opt, device):
+def test_on_neural_network(seed, curvature_opt, preconditioning, device):
     """This simply sets up and runs the `HessianFree` optimizer on a small
     neural network. Apart from running without throwing an error, no further
     checks are applied.
@@ -57,8 +62,18 @@ def test_on_neural_network(seed, curvature_opt, device):
 
     # Perform some update steps
     for step_idx in range(3):
+
+        # Use preconditioning?
+        if preconditioning:
+            diag_EF = diag_EF_backpack(
+                model, loss_function, inputs, targets, reduction="mean"
+            )
+            M_func = diag_to_preconditioner(diag_EF, damping)
+        else:
+            M_func = None
+
         print(f"\n===== STEP {step_idx} =====")
-        opt.step(eval_loss_and_outputs)
+        opt.step(eval_loss_and_outputs, M_func=M_func)
 
 
 DIMS = [3, 5, 10]
@@ -128,6 +143,25 @@ def test_on_quadratic(seed, dim, device):
 
 if __name__ == "__main__":
 
-    test_on_neural_network(seed=0, curvature_opt="hessian", device="cpu")
-    test_on_neural_network(seed=0, curvature_opt="ggn", device="cpu")
+    test_on_neural_network(
+        seed=0,
+        curvature_opt="hessian",
+        preconditioning=True,
+        device="cpu",
+    )
+
+    test_on_neural_network(
+        seed=0,
+        curvature_opt="ggn",
+        preconditioning=True,
+        device="cpu",
+    )
+
+    test_on_neural_network(
+        seed=0,
+        curvature_opt="ggn",
+        preconditioning=False,
+        device="cpu",
+    )
+
     test_on_quadratic(seed=0, dim=5, device="cpu")

@@ -86,8 +86,12 @@ class HessianFree(torch.optim.Optimizer):
         self._group = self.param_groups[0]
         self._params = self._group["params"]
 
-    def step(self, eval_loss_and_outputs):
-        """TODO"""
+    def step(self, eval_loss_and_outputs, M_func=None):
+        """TODO
+
+        M is supposed to approximate the inverse of `A`, i.e. the inverse of the
+        damped (!!) curvature matrix.
+        """
 
         # Set state
         self.state.setdefault("x0", None)
@@ -150,6 +154,7 @@ class HessianFree(torch.optim.Optimizer):
             A=lambda x: A_func(x) + damping * x,  # add damping
             b=-loss_grad,
             x0=self.state["x0"],
+            M=M_func,
             max_iter=cg_max_iter,
             martens_conv_crit=True,
             store_x_at_iters=None,  # use automatic grid
@@ -293,31 +298,3 @@ class HessianFree(torch.optim.Optimizer):
                 initialize the cg-method.
         """
         self.state["x0"] = new_x0
-
-
-# # The empirical Fisher diagonal (Section 20.11.3)
-# def empirical_fisher_diagonal(net, xs, ys, criterion):
-#     grads = list()
-#     for (x, y) in zip(xs, ys):
-#         fi = criterion(net(x), y)
-#         grads.append(
-#             torch.autograd.grad(fi, net.parameters(), retain_graph=False)
-#         )
-
-#     vec = torch.cat(
-#         [(torch.stack(p) ** 2).mean(0).detach().flatten() for p in zip(*grads)]
-#     )
-#     return vec
-
-
-# # The empirical Fisher matrix (Section 20.11.3)
-# def empirical_fisher_matrix(net, xs, ys, criterion):
-#     grads = list()
-#     for (x, y) in zip(xs, ys):
-#         fi = criterion(net(x), y)
-#         grad = torch.autograd.grad(fi, net.parameters(), retain_graph=False)
-#         grads.append(torch.cat([g.detach().flatten() for g in grad]))
-
-#     grads = torch.stack(grads)
-#     n_batch = grads.shape[0]
-#     return torch.einsum("ij,ik->jk", grads, grads) / n_batch
