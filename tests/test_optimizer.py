@@ -3,7 +3,7 @@
 import pytest
 import torch
 from hessianfree.optimizer import HessianFree
-from hessianfree.preconditioners import diag_EF_backpack, diag_to_preconditioner
+from hessianfree.preconditioners import diag_EF_preconditioner
 
 from test_utils import (
     TargetFuncModel,
@@ -20,6 +20,9 @@ CURV_OPTS_IDS = [f"curvature_opt = {c}" for c in CURV_OPTS]
 PRECON = [True, False]
 PRECON_IDS = [f"preconditioning = {p}" for p in PRECON]
 
+USE_BACKPACK = [True, False]
+USE_BACKPACK_IDS = [f"use_backpack = {u}" for u in USE_BACKPACK]
+
 DEVICES = ["cpu"]
 if torch.cuda.is_available():
     DEVICES.append(torch.device("cuda"))
@@ -29,14 +32,19 @@ DEVICES_IDS = [f"device = {d}" for d in DEVICES]
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
 @pytest.mark.parametrize("curvature_opt", CURV_OPTS, ids=CURV_OPTS_IDS)
 @pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
+@pytest.mark.parametrize("use_backpack", USE_BACKPACK, ids=USE_BACKPACK_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
-def test_on_neural_network(seed, curvature_opt, preconditioning, device):
+def test_on_neural_network(
+    seed, curvature_opt, preconditioning, use_backpack, device
+):
     """This simply sets up and runs the `HessianFree` optimizer on a small
     neural network. Apart from running without throwing an error, no further
     checks are applied.
     """
 
-    msg = f"seed={seed}, curvature_opt={curvature_opt}, device={device}"
+    msg = f"seed={seed}, curvature_opt={curvature_opt} "
+    msg += f"preconditioning={preconditioning}, use_backpack={use_backpack} "
+    msg += f"device={device}"
     print("\n===== TEST `HessianFree` on a small neural network =====\n" + msg)
 
     # Create test problem
@@ -65,10 +73,15 @@ def test_on_neural_network(seed, curvature_opt, preconditioning, device):
 
         # Use preconditioning?
         if preconditioning:
-            diag_EF = diag_EF_backpack(
-                model, loss_function, inputs, targets, reduction="mean"
+            M_func = diag_EF_preconditioner(
+                model,
+                loss_function,
+                inputs,
+                targets,
+                reduction="mean",
+                damping=damping,
+                use_backpack=use_backpack,
             )
-            M_func = diag_to_preconditioner(diag_EF, damping)
         else:
             M_func = None
 
@@ -147,6 +160,7 @@ if __name__ == "__main__":
         seed=0,
         curvature_opt="hessian",
         preconditioning=True,
+        use_backpack=True,
         device="cpu",
     )
 
@@ -154,6 +168,7 @@ if __name__ == "__main__":
         seed=0,
         curvature_opt="ggn",
         preconditioning=True,
+        use_backpack=True,
         device="cpu",
     )
 
@@ -161,6 +176,7 @@ if __name__ == "__main__":
         seed=0,
         curvature_opt="ggn",
         preconditioning=False,
+        use_backpack=True,
         device="cpu",
     )
 

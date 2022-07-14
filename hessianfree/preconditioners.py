@@ -122,6 +122,38 @@ def diag_to_preconditioner(diag_vec, damping, exponent=0.75):
     return M_func
 
 
+def diag_EF_preconditioner(
+    model,
+    loss_function,
+    inputs,
+    targets,
+    reduction,
+    damping,
+    exponent=None,
+    use_backpack=True,
+):
+    """This is simply a wrapper function calling one of the functions above to
+    compute the diagonal of the empirical Fisher matrix and turning it into a
+    preconditioner using `diag_to_preconditioner`. For an explanation on the
+    function arguments, see above.
+    """
+
+    if use_backpack:
+        diag_EF = diag_EF_backpack(
+            model, loss_function, inputs, targets, reduction
+        )
+    else:  # use autograd
+        diag_EF = diag_EF_autograd(
+            model, loss_function, inputs, targets, reduction
+        )
+
+    if exponent is None:  # use default from `diag_to_preconditioner`
+        M_func = diag_to_preconditioner(diag_EF, damping)
+    else:
+        M_func = diag_to_preconditioner(diag_EF, damping, exponent)
+    return M_func
+
+
 if __name__ == "__main__":
 
     torch.manual_seed(0)
