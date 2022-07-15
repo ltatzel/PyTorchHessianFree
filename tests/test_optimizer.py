@@ -74,13 +74,12 @@ def test_on_neural_network(
 
         # Use preconditioning?
         if preconditioning:
-            M_func = diag_EF_preconditioner(
+            M_func = opt.get_preconditioner(
                 model,
                 loss_function,
                 inputs,
                 targets,
                 reduction="mean",
-                damping=opt._group["damping"],  # currently used damping
                 use_backpack=use_backpack,
             )
         else:

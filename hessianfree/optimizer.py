@@ -10,6 +10,7 @@ from torch.nn.utils.convert_parameters import parameters_to_vector
 from hessianfree.cg import cg
 from hessianfree.cg_backtracking import cg_efficient_backtracking
 from hessianfree.linesearch import simple_linesearch
+from hessianfree.preconditioners import diag_EF_preconditioner
 from hessianfree.utils import vector_to_parameter_list, vector_to_trainparams
 
 
@@ -314,3 +315,29 @@ class HessianFree(torch.optim.Optimizer):
                 initialize the cg-method.
         """
         self.state["x0"] = new_x0
+
+    def get_preconditioner(
+        self,
+        model,
+        loss_function,
+        inputs,
+        targets,
+        reduction,
+        exponent=None,
+        use_backpack=True,
+    ):
+        """This is simply a wrapper function calling `diag_EF_preconditioner`
+        from `preconditioners.py`. It automatically sets the correct damping
+        value currently used by the optimizer.
+        """
+
+        diag_EF_preconditioner(
+            model,
+            loss_function,
+            inputs,
+            targets,
+            reduction,
+            damping=self._group["damping"],
+            exponent=exponent,
+            use_backpack=use_backpack,
+        )
