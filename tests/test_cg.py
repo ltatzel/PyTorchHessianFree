@@ -18,6 +18,9 @@ TOLS_IDS = [f"tol = {tol:e}" for tol in TOLS]
 ATOLS = [1e-3, 1e-6]
 ATOLS_IDS = [f"atol = {atol:e}" for atol in ATOLS]
 
+PRECON = [True, False]
+PRECON_IDS = [f"preconditioning = {p}" for p in PRECON]
+
 DEVICES = ["cpu"]
 if torch.cuda.is_available():
     DEVICES.append(torch.device("cuda"))
@@ -28,14 +31,16 @@ DEVICES_IDS = [f"device = {d}" for d in DEVICES]
 @pytest.mark.parametrize("dim", DIMS, ids=DIMS_IDS)
 @pytest.mark.parametrize("tol", TOLS, ids=TOLS_IDS)
 @pytest.mark.parametrize("atol", ATOLS, ids=ATOLS_IDS)
+@pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
-def test_cg_residuals(seed, dim, tol, atol, device):
+def test_cg_residuals(seed, dim, tol, atol, preconditioning, device):
     """Apply cg (without preconditioning) to a randomly chosen linear system
     until convergence. Check that the residual is within the specified
     tolerances.
     """
 
-    msg = f"seed={seed}, dim={dim}, tol={tol}, atol={atol}, device={device}"
+    msg = f"seed={seed}, dim={dim}, tol={tol}, atol={atol}, "
+    msg += f"preconditioning={preconditioning}, device={device}"
     print("\n===== RUN `test_cg_x_iters` =====\nwith " + msg)
 
     # Define problem
@@ -44,11 +49,21 @@ def test_cg_residuals(seed, dim, tol, atol, device):
     def A_func(x):
         return torch.matmul(A, x)
 
+    # Define preconditioner: Inverse of diagonal of A
+    if preconditioning:
+        M = torch.diag(torch.diag(A) ** (-1))
+
+        def M_func(x):
+            return M @ x
+
+    else:
+        M_func = None
+
     # Apply cg until convergence
     x_iters, _ = cg(
         A_func,
         b,
-        M=None,
+        M=M_func,
         max_iter=10 * dim,  # `dim` only sufficient under exact arithmetics
         tol=tol,
         atol=atol,
@@ -72,17 +87,23 @@ def test_cg_residuals(seed, dim, tol, atol, device):
 TOL = 1e-5
 ATOL = 1e-6
 
+X0_NONE = [True, False]
+X0_NONE_IDS = [f"x0 is None? {x:e}" for x in X0_NONE]
+
 
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
 @pytest.mark.parametrize("dim", DIMS, ids=DIMS_IDS)
+@pytest.mark.parametrize("x0_none", X0_NONE, ids=X0_NONE_IDS)
+@pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
-def test_cg_m_iters(seed, dim, device):
+def test_cg_m_iters(seed, dim, x0_none, preconditioning, device):
     """Apply cg (without preconditioning) to a randomly chosen linear system.
     The output `m_iters` has to correspond to evaluations of the quadratic
     `0.5 x^T A x - b^T x`.
     """
 
-    msg = f"seed={seed}, dim={dim}, device={device}"
+    msg = f"seed={seed}, dim={dim}, x0_none={x0_none}, "
+    msg += f"preconditioning={preconditioning}, device={device}"
     print("\n===== RUN `test_cg_m_iters` =====\nwith " + msg)
 
     # Define problem
@@ -91,11 +112,25 @@ def test_cg_m_iters(seed, dim, device):
     def A_func(x):
         return torch.matmul(A, x)
 
+    # Define `x0`
+    x0 = None if x0_none else 2 * (torch.rand(dim) - 0.5)
+
+    # Define preconditioner: Inverse of diagonal of A
+    if preconditioning:
+        M = torch.diag(torch.diag(A) ** (-1))
+
+        def M_func(x):
+            return M @ x
+
+    else:
+        M_func = None
+
     # Apply cg (with default tolerances)
     x_iters, m_iters = cg(
         A_func,
         b,
-        M=None,
+        x0=x0,
+        M=M_func,
         max_iter=10 * dim,  # `dim` only sufficient under exact arithmetics
         tol=TOL,
         atol=ATOL,
