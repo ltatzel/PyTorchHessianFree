@@ -86,11 +86,26 @@ class HessianFree(torch.optim.Optimizer):
         self._group = self.param_groups[0]
         self._params = self._group["params"]
 
-    def step(self, eval_loss_and_outputs, M_func=None):
+        # All computations are performed in the subspace of trainable parameters
+        self._params_list = [p for p in self._params if p.requires_grad]
+
+    def step(
+        self,
+        forward,
+        grad=None,
+        curv_mv=None,
+        M_func=None,
+    ):
         """TODO
 
-        M is supposed to approximate the inverse of `A`, i.e. the inverse of the
-        damped (!!) curvature matrix.
+        forward: Used for everything after cg. Returns a loss-outputs-tuple
+            (outputs can be `None`, but then `curvature_opt` cannot be `"ggn"`).
+        grad: The gradient of the loss function. It is used as right hand side
+            in cg and in the line search. If not given, this is coputed based on
+            `forward`.
+        curv_mv: Used in cg
+        M_func: M is supposed to approximate the inverse of `A`, i.e. the
+            inverse of the damped (!!) curvature matrix.
         """
 
         # Set state
@@ -102,46 +117,41 @@ class HessianFree(torch.optim.Optimizer):
         if self.verbose:
             print("\nInformation on parameters...")
 
-            # Total number of parameters
             num_params = sum(p.numel() for p in self._params)
             print("Total number of parameters: ", num_params)
 
-            # Number of trainable parameters
             num_params = sum(p.numel() for p in self._params if p.requires_grad)
             print("Number of trainable parameters: ", num_params)
-
-        # ----------------------------------------------------------------------
-        # Compute loss and its gradient
-        # ----------------------------------------------------------------------
-
-        # All computations are performed in the subspace of trainable parameters
-        params_list = [p for p in self._params if p.requires_grad]
-
-        # Forward pass
-        loss, outputs = eval_loss_and_outputs()
-        if self.verbose:
-            print(f"\nInitial loss = {float(loss):.6f}")
-
-        # Compute gradient, convert to vector, detach
-        loss_grad = torch.autograd.grad(
-            loss, params_list, create_graph=True, retain_graph=True
-        )
-        loss_grad = parameters_to_vector(loss_grad).detach()
 
         # ----------------------------------------------------------------------
         # Set up linear system
         # ----------------------------------------------------------------------
 
+        # Forward pass
+        loss, outputs = forward()
+        init_loss = loss.item()
+        if self.verbose:
+            print(f"\nInitial loss = {init_loss:.6f}")
+
+        # Evaluate the gradient
+        if grad is None:
+            grad = torch.autograd.grad(
+                loss, self._params_list, create_graph=True, retain_graph=True
+            )
+            grad = parameters_to_vector(grad).detach()
+
+        # Matrix-vector products with the curvature matrix
         curvature_opt = self._group["curvature_opt"]
-        if curvature_opt == "hessian":
+        if curv_mv is None:
+            if curvature_opt == "hessian":
 
-            def A_func(x):
-                return self._Hv(loss, params_list, x)
+                def curv_mv(x):
+                    return self._Hv(loss, self._params_list, x)
 
-        elif curvature_opt == "ggn":
+            elif curvature_opt == "ggn":
 
-            def A_func(x):
-                return self._Gv(loss, outputs, params_list, x)
+                def curv_mv(x):
+                    return self._Gv(loss, outputs, self._params_list, x)
 
         # ----------------------------------------------------------------------
         # Apply (preconditioned) cg
@@ -151,13 +161,13 @@ class HessianFree(torch.optim.Optimizer):
 
         # Apply cg
         x_iters, m_iters = cg(
-            A=lambda x: A_func(x) + damping * x,  # add damping
-            b=-loss_grad,
+            A=lambda x: curv_mv(x) + damping * x,  # Add damping
+            b=-grad,
             x0=self.state["x0"],
             M=M_func,
             max_iter=cg_max_iter,
             martens_conv_crit=True,
-            store_x_at_iters=None,  # use automatic grid
+            store_x_at_iters=None,  # Use automatic grid
             verbose=self.verbose,
         )
         step_vec = x_iters[-1]
@@ -166,23 +176,24 @@ class HessianFree(torch.optim.Optimizer):
         self._set_x0(self.cg_decay_x0 * x_iters[-1])
 
         # ----------------------------------------------------------------------
-        # Define target function
+        # Define target function from `forward`
         # ----------------------------------------------------------------------
 
         # Backup of original trainable parameters as vector
-        params_vec = parameters_to_vector(params_list).detach()
+        params_vec = parameters_to_vector(self._params_list).detach()
 
         def tfunc(step):
             """Evaluate the target funtion that is to be minimized."""
             vector_to_trainparams(params_vec + step, self._params)
-            return eval_loss_and_outputs()[0].item()
+            return forward()[0].item()
 
         # ----------------------------------------------------------------------
         # Adapt damping (LM heuristic)
         # ----------------------------------------------------------------------
+        assert x_iters[0] is not None and x_iters[-1] is not None
         if self.adapt_damping:
             self._adapt_damping(
-                f_0=loss.item(),
+                f_0=tfunc(x_iters[0]),  # = `init_loss` only if `x0 = 0` in cg
                 f_step=tfunc(x_iters[-1]),
                 m_0=m_iters[0],
                 m_step=m_iters[-1],
@@ -205,15 +216,14 @@ class HessianFree(torch.optim.Optimizer):
         lr = self._group["lr"]
 
         if not self.use_linesearch:  # Constant learning rate
-            lr = float(lr)
             if self.verbose:
                 print(f"\nConstant lr = {lr:.6f}")
         else:  # Perform line search
             lr, _ = simple_linesearch(
                 f=tfunc,
-                f_grad_0=loss_grad,
+                f_grad_0=grad,
                 step=step_vec,
-                init_alpha=float(lr),
+                init_alpha=lr,
                 verbose=self.verbose,
             )
 
@@ -229,9 +239,9 @@ class HessianFree(torch.optim.Optimizer):
 
         # Print final loss
         if self.verbose:
-            final_loss = eval_loss_and_outputs()[0]
-            msg = f"Initial loss = {float(loss):.6f} --> "
-            msg += f"final loss = {float(final_loss):.6f}"
+            final_loss = forward()[0].item()
+            msg = f"Initial loss = {init_loss:.6f} --> "
+            msg += f"final loss = {final_loss:.6f}"
             print(msg)
 
     @staticmethod
@@ -255,8 +265,7 @@ class HessianFree(torch.optim.Optimizer):
         update step) and the improvement predicted by the quadratic model. Note
         that this method changes the `self._group["damping"]` attribute.
 
-        If a negative reduction ratio is detected, we raise a warning and set
-        the initial `x0` used by the cg-method in the next step to `None`.
+        If a negative reduction ratio is detected, we raise a warning.
 
         Args:
             f_0, f_step: The target function value at `0` (no update step, i.e.
@@ -283,11 +292,9 @@ class HessianFree(torch.optim.Optimizer):
             print(f"  Damping is set to {damping:.6f}")
 
         if rho < 0:  # Bad cg-initialization
-            msg = "The reduction ratio `rho` is < 0. This might result in a "
-            msg += "bad cg-initialization in the next step. We thus use "
-            msg += "`x0 = None` instead."
+            msg = "The reduction ratio `rho` is negative. This might result in "
+            msg += "a bad cg-initialization in the next step."
             warn(msg)
-            self._set_x0(None)
 
     def _set_x0(self, new_x0):
         """Set the "x0" value in the state dictionary to `new_x0`. This will be
