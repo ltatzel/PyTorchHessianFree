@@ -54,7 +54,7 @@ def test_on_neural_network(
     )
     inputs, targets = data
 
-    def eval_loss_and_outputs():
+    def forward():
         outputs = model(inputs)
         loss = loss_function(outputs, targets)
         return loss, outputs
@@ -79,14 +79,14 @@ def test_on_neural_network(
                 inputs,
                 targets,
                 reduction="mean",
-                damping=damping,
+                damping=opt._group["damping"],  # currently used damping
                 use_backpack=use_backpack,
             )
         else:
             M_func = None
 
         print(f"\n===== STEP {step_idx} =====")
-        opt.step(eval_loss_and_outputs, M_func=M_func)
+        opt.step(forward, M_func=M_func)
 
 
 DIMS = [3, 5, 10]
@@ -125,7 +125,7 @@ def test_on_quadratic(seed, dim, device):
     opt_params = torch.linalg.solve(A, -b)
     print("\nopt_params = ", opt_params.T)
 
-    def eval_loss_and_outputs():
+    def forward():
         return model.eval_loss(), None
 
     # Set up optimizer
@@ -147,7 +147,7 @@ def test_on_quadratic(seed, dim, device):
     init_dist = eval_dist_to_opt()
     print(f"\nInitial distance to optimum = {init_dist}")
 
-    opt.step(eval_loss_and_outputs)
+    opt.step(forward=forward)
 
     final_dist = eval_dist_to_opt()
     print(f"\nFinal distance to optimum = {final_dist}")
