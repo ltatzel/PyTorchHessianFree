@@ -43,7 +43,7 @@ if __name__ == "__main__":
     model.to(DEVICE)
     inputs, targets = data[0].to(DEVICE), data[1].to(DEVICE)
 
-    def eval_loss_and_outputs():
+    def forward():
         outputs = model(inputs)
         loss = loss_function(outputs, targets)
         return loss, outputs
@@ -51,4 +51,4 @@ if __name__ == "__main__":
     opt = HessianFree(model.parameters(), verbose=True)
     for step_idx in range(2):
         print(f"\n===== STEP {step_idx} =====")
-        opt.step(eval_loss_and_outputs)
+        opt.step(forward=forward)

@@ -44,7 +44,7 @@ if __name__ == "__main__":
     loss_function = torch.nn.MSELoss(reduction="mean")
 
     # Set up the optimizer
-    def eval_loss_and_outputs():
+    def forward():
         outputs = model(inputs)
         loss = loss_function(outputs, targets)
         return loss, outputs
@@ -54,4 +54,4 @@ if __name__ == "__main__":
     # Run the optimizer for a few steps (with default hyperparameters)
     for step_idx in range(2):
         print(f"\n===== STEP {step_idx} =====")
-        opt.step(eval_loss_and_outputs)
+        opt.step(forward=forward)
