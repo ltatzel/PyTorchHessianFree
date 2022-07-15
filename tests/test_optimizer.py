@@ -34,6 +34,7 @@ DEVICES_IDS = [f"device = {d}" for d in DEVICES]
 @pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
 @pytest.mark.parametrize("use_backpack", USE_BACKPACK, ids=USE_BACKPACK_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
+@pytest.mark.filterwarnings("ignore:The reduction ratio `rho` is negative.")
 def test_on_neural_network(
     seed, curvature_opt, preconditioning, use_backpack, device
 ):
