@@ -279,6 +279,10 @@ class HessianFree(torch.optim.Optimizer):
         rho = (f_step - f_0) / (m_step - m_0)
         if self.verbose:
             print("\nLM-heurisitc: Adapt damping...")
+            print(f"  f_0    = {f_0:.6f}")
+            print(f"  f_step = {f_step:.6f}")
+            print(f"  m_0    = {m_0:.6f}")
+            print(f"  m_step = {m_step:.6f}")
             print(f"  Reduction ratio rho = {rho:.6f}")
 
         # Levenberg-Marquardt heuristic for adjusting the damping constant
