@@ -42,7 +42,7 @@ def cg(
             `norm(residual) <= max(tol * norm(b), atol)`.
         martens_conv_crit (bool): If `True`, use Martens convergence criterion
             in addition to the tolerance-based citerion.
-        store_x_at_iters (list): Store the cg-approximations for `x` in
+        store_x_at_iters (list or None): Store the cg-approximations for `x` in
             `x_iters` only in the iterations in `store_x_at_iters`. The final
             solution is always stored, even if `store_x_at_iters` is an empty
             list (the default). If `None` is given, an automatic grid is
@@ -115,9 +115,9 @@ def cg(
     # Dealing with non-positive curvature
     # --------------------------------------------------------------------------
     def _postprocess_pAp(pAp, iter, nonpos_curv_option="ignore"):
-        """This function detects non-positive directional curvature `pAp`
-        and allows to implement different options how to deal with this
-        case. So far, the following options are implemented:
+        """This function detects non-positive directional curvature `pAp` and
+        allows to implement different options how to deal with this case. So
+        far, the following options are implemented:
         - ignore: Still use the non-positive curvature `pAp`.
         - saddle-free: Take the absolute value of the directional curvature.
             This idea is taken from [4].
@@ -144,15 +144,14 @@ def cg(
     # Store intermediate approximative solutions
     # --------------------------------------------------------------------------
     def _cg_storing_grid(max_iter, gamma=1.3):
-        """This is an auxiliary function that creates a grid of iterations
-        at which cg will store the respective approximative solution `x`.
-        This approach and the parameter `gamma` are taken from [1, Section
-        4.6]: We include the iterations defined by `ceil(gamma^j) - 1` for
-        `j=1, 2, ...`.
+        """This is an auxiliary function that creates a grid of iterations at
+        which cg will store the respective approximative solution `x`. This
+        approach and the parameter `gamma` are taken from [1, Section 4.6]: We
+        include the iterations defined by `ceil(gamma^j) - 1` for `j=1, 2, ...`.
 
-        `max_iter` is the maximum number of iterations used in the
-        cg-method. `gamma` is a constant `> 1`. Values close to `1` result
-        in a fine grid, values `>> 1` result in a coarse grid.
+        `max_iter` is the maximum number of iterations used in the cg-method.
+        `gamma` is a constant `> 1`. Values close to `1` result in a fine grid,
+        values `>> 1` result in a coarse grid.
         """
 
         if gamma < 1.0:
