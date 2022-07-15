@@ -215,11 +215,15 @@ class HessianFree(torch.optim.Optimizer):
         # ----------------------------------------------------------------------
         lr = self._group["lr"]
 
-        if not self.use_linesearch:  # Constant learning rate
+        if not self.use_linesearch:
+            # Constant learning rate
             if self.verbose:
                 print(f"\nConstant lr = {lr:.6f}")
-        else:  # Perform line search
-            lr, _ = simple_linesearch(
+            final_loss = None  # Has to be evaluated
+
+        else:
+            # Perform line search
+            lr, final_loss = simple_linesearch(
                 f=tfunc,
                 f_grad_0=grad,
                 step=step_vec,
@@ -237,9 +241,10 @@ class HessianFree(torch.optim.Optimizer):
         new_params_vec = params_vec + lr * step_vec
         vector_to_trainparams(new_params_vec, self._params)
 
-        # Print final loss
+        # Print initial and final loss
         if self.verbose:
-            final_loss = forward()[0].item()
+            if final_loss is None:
+                final_loss = forward()[0].item()
             msg = f"Initial loss = {init_loss:.6f} --> "
             msg += f"final loss = {final_loss:.6f}"
             print(msg)
