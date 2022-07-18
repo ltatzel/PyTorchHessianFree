@@ -3,7 +3,6 @@
 import pytest
 import torch
 from hessianfree.optimizer import HessianFree
-from hessianfree.preconditioners import diag_EF_preconditioner
 
 from test_utils import (
     TargetFuncModel,

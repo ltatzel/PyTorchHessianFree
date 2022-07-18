@@ -2,8 +2,8 @@
 
 import pytest
 import torch
-
 from hessianfree.cg import cg
+
 from test_utils import get_linear_system
 
 SEEDS = [0, 1, 42]
