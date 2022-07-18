@@ -89,22 +89,26 @@ class HessianFree(torch.optim.Optimizer):
 
         # All computations are performed in the subspace of trainable parameters
         self._params_list = [p for p in self._params if p.requires_grad]
+        self.device = self._params_list[0].device
 
     def step(
         self,
         forward,
         grad=None,
-        curv_mv=None,
+        mvp=None,
         M_func=None,
     ):
         """TODO
 
         forward: Used for everything after cg. Returns a loss-outputs-tuple
             (outputs can be `None`, but then `curvature_opt` cannot be `"ggn"`).
+            You may want to check that the model is in eval mode.
         grad: The gradient of the loss function. It is used as right hand side
             in cg and in the line search. If not given, this is coputed based on
             `forward`.
-        curv_mv: Used in cg
+            You may want to check that the model is in eval mode.
+        mvp: Matrix vector product used in cg.
+            You may want to check that the model is in eval mode.
         M_func: M is supposed to approximate the inverse of `A`, i.e. the
             inverse of the damped (!!) curvature matrix.
         """
@@ -123,6 +127,8 @@ class HessianFree(torch.optim.Optimizer):
 
             num_params = sum(p.numel() for p in self._params if p.requires_grad)
             print("Number of trainable parameters: ", num_params)
+
+            print("Device = ", self.device)
 
         # ----------------------------------------------------------------------
         # Set up linear system
@@ -143,15 +149,15 @@ class HessianFree(torch.optim.Optimizer):
 
         # Matrix-vector products with the curvature matrix
         curvature_opt = self._group["curvature_opt"]
-        if curv_mv is None:
+        if mvp is None:
             if curvature_opt == "hessian":
 
-                def curv_mv(x):
+                def mvp(x):
                     return self._Hv(loss, self._params_list, x)
 
             elif curvature_opt == "ggn":
 
-                def curv_mv(x):
+                def mvp(x):
                     return self._Gv(loss, outputs, self._params_list, x)
 
         # ----------------------------------------------------------------------
@@ -162,7 +168,7 @@ class HessianFree(torch.optim.Optimizer):
 
         # Apply cg
         x_iters, m_iters = cg(
-            A=lambda x: curv_mv(x) + damping * x,  # Add damping
+            A=lambda x: mvp(x) + damping * x,  # Add damping
             b=-grad,
             x0=self.state["x0"],
             M=M_func,
@@ -341,3 +347,99 @@ class HessianFree(torch.optim.Optimizer):
             exponent=exponent,
             use_backpack=use_backpack,
         )
+
+    # def eval_on_datalist(datalist, eval_func, post_func):
+    #     eval_results = []
+    #     for inputs, targets in datalist:
+    #         # TODO: Move to device
+    #         eval_results.append(eval_func(inputs, targets))
+    #     return post_func(eval_results)
+
+    def _acc_loss(self, model, loss_func, datalist):
+        """Accumulate the loss values over a given list of `(inputs, targets)`
+        pairs. Return the loss and the network's outputs.
+        """
+        outputs_list = []
+        loss = 0.0
+        num_data = 0
+        for inputs, targets in datalist:
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            N = inputs.shape[0]
+            num_data += N
+            print(f"Working on mb of size N = {N}, num_data = {num_data}")
+            outputs_list.append(model(inputs))
+            loss += N * loss_func(outputs_list[-1], targets)
+        return loss / num_data, torch.cat(outputs_list, dim=0)
+
+    def _acc_grad(self, model, loss_func, datalist):
+        """Accumulate the gradient over a given list of `(inputs, targets)`
+        pairs.
+        """
+        grad = torch.zeros_like(parameters_to_vector(self._params_list))
+        num_data = 0
+        for inputs, targets in datalist:
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            N = inputs.shape[0]
+            num_data += N
+            print(f"Working on mb of size N = {N}, num_data = {num_data}")
+            loss = loss_func(model(inputs), targets)
+            mb_grad = torch.autograd.grad(loss, self._params_list)
+            grad += N * parameters_to_vector(mb_grad).detach()
+        grad = grad / num_data
+
+    def _acc_mvp(self, model, loss_func, datalist, x):
+        """Accumulate the matrix-vector products with a vector `x` over a given
+        list of `(inputs, targets)` pairs.
+        """
+        curvature_opt = self._group["curvature_opt"]
+
+        mvp = torch.zeros_like(parameters_to_vector(self._params_list))
+        num_data = 0
+        for inputs, targets in datalist:
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            N = inputs.shape[0]
+            num_data += N
+            print(f"Working on mb of size N = {N}, num_data = {num_data}")
+            outputs = model(inputs)
+            loss = loss_func(outputs, targets)
+            if curvature_opt == "hessian":
+                mvp += N * self._Hv(loss, self._params_list, x)
+            elif curvature_opt == "ggn":
+                mvp += self._Gv(loss, outputs, self._params_list, x)
+        return mvp / num_data
+
+    def acc_step(
+        self,
+        model,
+        loss_func,
+        forward_datalist,
+        grad_datalist=None,
+        mvp_datalist=None,
+        M_func=None,
+    ):
+        """TODO: Perform an optimization step but the loss/gradient/curvature
+        are evaluated over a list of mini-batches.
+        """
+
+        # Set model to eval-mode?
+
+        # Forward
+        def forward():
+            return self._acc_loss(model, loss_func, forward_datalist)
+
+        # Data for gradient computation
+        if grad_datalist is None:
+            grad_datalist = forward_datalist
+
+        # Gradient
+        grad = self._acc_grad(model, loss_func, grad_datalist)
+
+        # Data for matrix-vector products
+        if mvp_datalist is None:
+            mvp_datalist = forward_datalist
+
+        # Matrix vector product
+        def mvp(x):
+            return self._acc_mvp(model, loss_func, mvp_datalist, x)
+
+        self.step(forward=forward, grad=grad, mvp=mvp, M_func=M_func)
