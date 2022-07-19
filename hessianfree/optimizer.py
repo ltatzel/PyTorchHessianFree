@@ -366,39 +366,89 @@ class HessianFree(torch.optim.Optimizer):
 
         return losses_list, outputs_list, N_list
 
+    def _acc(
+        self,
+        losses_list,
+        outputs_list,
+        N_list,
+        init_result,
+        eval_mb,
+        reduction,
+    ):
+        if reduction not in ["mean", "sum"]:
+            raise ValueError(f"Invalid reduction {reduction}")
+
+        # Accumulate results using the `eval_mb` function
+        result = init_result
+        for loss, outputs, N in zip(losses_list, outputs_list, N_list):
+            if reduction == "mean":
+                result += N * eval_mb(loss, outputs, N)
+            else:
+                result += eval_mb(loss, outputs, N)
+
+        # Return result
+        num_data = sum(N_list)
+        if reduction == "mean":
+            return result / num_data
+        else:
+            return result
+
     def _acc_loss_and_outputs(self, losses_list, outputs_list, N_list):
         """TODO"""
 
-        num_data = sum(N_list)
-        loss = sum(N * l for (N, l) in zip(N_list, losses_list)) / num_data
+        def eval_mb_loss(loss, outputs, N):
+            return loss
+
+        loss = self._acc(
+            losses_list,
+            outputs_list,
+            N_list,
+            init_result=0.0,
+            eval_mb=eval_mb_loss,
+            reduction="mean",
+        )
 
         return loss, torch.cat(outputs_list, dim=0)
 
     def _acc_grad(self, losses_list, N_list):
         """TODO"""
 
-        grad = torch.zeros_like(parameters_to_vector(self._params_list))
-        for loss, N in zip(losses_list, N_list):
-            mb_grad = torch.autograd.grad(loss, self._params_list)
-            grad += N * parameters_to_vector(mb_grad).detach()
+        init_grad = torch.zeros_like(parameters_to_vector(self._params_list))
 
-        num_data = sum(N_list)
-        return grad / num_data
+        def eval_mb_grad(loss, outputs, N):
+            mb_grad = torch.autograd.grad(loss, self._params_list)
+            return parameters_to_vector(mb_grad).detach()
+
+        return self._acc(
+            losses_list,
+            [None] * len(losses_list),
+            N_list,
+            init_result=init_grad,
+            eval_mb=eval_mb_grad,
+            reduction="mean",
+        )
 
     def _acc_mvp(self, losses_list, outputs_list, N_list, x):
         """TODO"""
 
+        init_mvp = torch.zeros_like(parameters_to_vector(self._params_list))
+
         curvature_opt = self._group["curvature_opt"]
 
-        mvp = torch.zeros_like(parameters_to_vector(self._params_list))
-        for loss, outputs, N in zip(losses_list, outputs_list, N_list):
+        def eval_mb_mvp(loss, outputs, N):
             if curvature_opt == "hessian":
-                mvp += N * self._Hv(loss, self._params_list, x)
+                return self._Hv(loss, self._params_list, x)
             elif curvature_opt == "ggn":
-                mvp += N * self._Gv(loss, outputs, self._params_list, x)
+                return self._Gv(loss, outputs, self._params_list, x)
 
-        num_data = sum(N_list)
-        return mvp / num_data
+        return self._acc(
+            losses_list,
+            outputs_list,
+            N_list,
+            init_result=init_mvp,
+            eval_mb=eval_mb_mvp,
+            reduction="mean",
+        )
 
     def acc_step(
         self,
