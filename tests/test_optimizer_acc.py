@@ -94,13 +94,10 @@ def test_on_neural_network(seed, curvature_opt, reduction, device):
     # Loss and outputs
     ref_outputs = model(ref_inputs)
     ref_loss = loss_function(ref_outputs, ref_targets)
-    acc_loss, acc_outputs = opt._acc_loss_and_outputs(
-        losses_list, outputs_list, N_list, reduction
-    )
+    acc_loss = opt._acc_loss(losses_list, outputs_list, N_list, reduction)
 
     print(f"\nacc_loss = {acc_loss:.6f}, ref_loss = {ref_loss:.6f}")
     assert torch.allclose(acc_loss, ref_loss), "Inconsistent loss"
-    assert torch.allclose(acc_outputs, ref_outputs), "Inconsistent outputs"
 
     # --------------------------------------------------------------------------
     # Gradient
