@@ -348,9 +348,12 @@ class HessianFree(torch.optim.Optimizer):
             use_backpack=use_backpack,
         )
 
-    def _forward_lists(self, model, loss_func, datalist):
+    @staticmethod
+    def _forward_lists(model, loss_func, datalist, device):
         """Evaluate the network's outputs, the corresponding losses and mini-
         batch sizes for all mini-batches in `datalist`.
+
+        TODO
         """
 
         losses_list = []
@@ -358,7 +361,7 @@ class HessianFree(torch.optim.Optimizer):
         N_list = []
 
         for inputs, targets in datalist:
-            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            inputs, targets = inputs.to(device), targets.to(device)
 
             N_list.append(targets.shape[0])
             outputs_list.append(model(inputs))
@@ -366,8 +369,8 @@ class HessianFree(torch.optim.Optimizer):
 
         return losses_list, outputs_list, N_list
 
+    @staticmethod
     def _acc(
-        self,
         losses_list,
         outputs_list,
         N_list,
@@ -375,6 +378,8 @@ class HessianFree(torch.optim.Optimizer):
         eval_mb,
         reduction,
     ):
+        """TODO"""
+
         if reduction not in ["mean", "sum"]:
             raise ValueError(f"Invalid reduction {reduction}")
 
@@ -393,7 +398,9 @@ class HessianFree(torch.optim.Optimizer):
         else:
             return result
 
-    def _acc_loss_and_outputs(self, losses_list, outputs_list, N_list):
+    def _acc_loss_and_outputs(
+        self, losses_list, outputs_list, N_list, reduction
+    ):
         """TODO"""
 
         def eval_mb_loss(loss, outputs, N):
@@ -405,12 +412,12 @@ class HessianFree(torch.optim.Optimizer):
             N_list,
             init_result=0.0,
             eval_mb=eval_mb_loss,
-            reduction="mean",
+            reduction=reduction,
         )
 
         return loss, torch.cat(outputs_list, dim=0)
 
-    def _acc_grad(self, losses_list, N_list):
+    def _acc_grad(self, losses_list, N_list, reduction):
         """TODO"""
 
         init_grad = torch.zeros_like(parameters_to_vector(self._params_list))
@@ -425,10 +432,10 @@ class HessianFree(torch.optim.Optimizer):
             N_list,
             init_result=init_grad,
             eval_mb=eval_mb_grad,
-            reduction="mean",
+            reduction=reduction,
         )
 
-    def _acc_mvp(self, losses_list, outputs_list, N_list, x):
+    def _acc_mvp(self, losses_list, outputs_list, N_list, reduction, x):
         """TODO"""
 
         init_mvp = torch.zeros_like(parameters_to_vector(self._params_list))
@@ -447,7 +454,7 @@ class HessianFree(torch.optim.Optimizer):
             N_list,
             init_result=init_mvp,
             eval_mb=eval_mb_mvp,
-            reduction="mean",
+            reduction=reduction,
         )
 
     def acc_step(
@@ -458,6 +465,7 @@ class HessianFree(torch.optim.Optimizer):
         grad_datalist=None,
         mvp_datalist=None,
         M_func=None,
+        reduction="mean",
     ):
         """TODO: Perform an optimization step but the loss/gradient/curvature
         are evaluated over a list of mini-batches.
@@ -468,9 +476,11 @@ class HessianFree(torch.optim.Optimizer):
         # ----------------------------------------------------------------------
         def forward():
             losses_list, outputs_list, N_list = self._forward_lists(
-                model, loss_func, forward_datalist
+                model, loss_func, forward_datalist, self.device
             )
-            return self._acc_loss_and_outputs(losses_list, outputs_list, N_list)
+            return self._acc_loss_and_outputs(
+                losses_list, outputs_list, N_list, reduction
+            )
 
         # ----------------------------------------------------------------------
         # Gradient
@@ -482,11 +492,11 @@ class HessianFree(torch.optim.Optimizer):
 
         # Forward pass for gradient computation
         losses_list, _, N_list = self._forward_lists(
-            model, loss_func, grad_datalist
+            model, loss_func, grad_datalist, self.device
         )
 
         # Gradient
-        grad = self._acc_grad(losses_list, N_list)
+        grad = self._acc_grad(losses_list, N_list, reduction)
 
         # ----------------------------------------------------------------------
         # Matrix-vector product
@@ -498,14 +508,90 @@ class HessianFree(torch.optim.Optimizer):
 
         # Forward pass for matrix-vector product
         losses_list, outputs_list, N_list = self._forward_lists(
-            model, loss_func, mvp_datalist
+            model, loss_func, mvp_datalist, self.device
         )
 
         # Matrix vector product
         def mvp(x):
-            return self._acc_mvp(losses_list, outputs_list, N_list, x)
+            return self._acc_mvp(
+                losses_list, outputs_list, N_list, reduction, x
+            )
 
         # ----------------------------------------------------------------------
         # Compute the optimization step
         # ----------------------------------------------------------------------
         self.step(forward=forward, grad=grad, mvp=mvp, M_func=M_func)
+
+    def test_reduction(self, model, loss_func, datalist, reduction):
+        """TODO
+
+        datalist: small!!
+        """
+
+        # Check the data list
+        error_msg = "This test is only meaningful for a data list with at "
+        error_msg += "least two entries."
+        assert len(datalist) > 1, error_msg
+
+        # Turn datalist into two tensors: `inputs` and `targets`
+        inputs_list = []
+        targets_list = []
+        for inputs, targets in datalist:
+            inputs_list.append(inputs)
+            targets_list.append(targets)
+
+        ref_inputs = torch.cat(inputs_list, dim=0).clone()
+        ref_targets = torch.cat(targets_list, dim=0).clone()
+
+        error_msg = f"Inconsistent results for reduction = {reduction}"
+
+        # ----------------------------------------------------------------------
+        # Test loss and outputs
+        # ----------------------------------------------------------------------
+        losses_list, outputs_list, N_list = self._forward_lists(
+            model, loss_func, datalist, device="cpu"
+        )
+        acc_loss, acc_outputs = self._acc_loss_and_outputs(
+            losses_list, outputs_list, N_list, reduction
+        )
+
+        ref_outputs = model(ref_inputs)
+        ref_loss = loss_func(ref_outputs, ref_targets)
+
+        assert torch.allclose(acc_loss, ref_loss), error_msg
+        assert torch.allclose(acc_outputs, ref_outputs), error_msg
+
+        # ----------------------------------------------------------------------
+        # Test gradient
+        # ----------------------------------------------------------------------
+        acc_grad = self._acc_grad(losses_list, N_list, reduction)
+
+        ref_grad = torch.autograd.grad(ref_loss, self._params_list)
+        ref_grad = parameters_to_vector(ref_grad).detach()
+
+        assert torch.allclose(acc_grad, ref_grad), error_msg
+
+        # ----------------------------------------------------------------------
+        # Test matrix-vector products
+        # ----------------------------------------------------------------------
+        x = torch.rand(acc_grad.shape)  # Sample random vector
+
+        losses_list, outputs_list, N_list = self._forward_lists(
+            model, loss_func, datalist, device="cpu"
+        )
+
+        acc_mvp = self._acc_mvp(losses_list, outputs_list, N_list, reduction, x)
+
+        # Reference matrix-vector product
+        ref_outputs = model(ref_inputs)
+        ref_loss = loss_func(ref_outputs, ref_targets)
+
+        curvature_opt = self._group["curvature_opt"]
+        if curvature_opt == "ggn":
+            ref_mvp = self._Gv(ref_loss, ref_outputs, self._params_list, x)
+        elif curvature_opt == "hessian":
+            ref_mvp = self._Hv(ref_loss, self._params_list, x)
+
+        assert torch.allclose(acc_mvp, ref_mvp), error_msg
+
+        print(f"All tests passed for reduction {reduction}.")
