@@ -349,11 +349,9 @@ class HessianFree(torch.optim.Optimizer):
         )
 
     def _forward_lists(self, model, loss_func, datalist):
-        """Evaluate the network's outputs, losses and mini-batch sizes for all
-        mini-batches in `datalist`.
+        """Evaluate the network's outputs, the corresponding losses and mini-
+        batch sizes for all mini-batches in `datalist`.
         """
-
-        print("_forward_lists")
 
         losses_list = []
         outputs_list = []
@@ -368,28 +366,16 @@ class HessianFree(torch.optim.Optimizer):
 
         return losses_list, outputs_list, N_list
 
-    def _acc_loss_and_outputs(self, model, loss_func, datalist):
-        """Accumulate the loss values and the model's outputs over all
-        mini-batches in `datalist`.
-        """
-
-        print("_acc_loss_and_outputs")
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model, loss_func, datalist
-        )
-        print("N_list = ", N_list)
+    def _acc_loss_and_outputs(self, losses_list, outputs_list, N_list):
+        """TODO"""
 
         num_data = sum(N_list)
         loss = sum(N * l for (N, l) in zip(N_list, losses_list)) / num_data
 
         return loss, torch.cat(outputs_list, dim=0)
 
-    def _acc_grad(self, model, loss_func, datalist):
-        """Accumulate the gradient over all mini-batches in `datalist`."""
-
-        print("_acc_grad")
-        losses_list, _, N_list = self._forward_lists(model, loss_func, datalist)
-        print("N_list = ", N_list)
+    def _acc_grad(self, losses_list, N_list):
+        """TODO"""
 
         grad = torch.zeros_like(parameters_to_vector(self._params_list))
         for loss, N in zip(losses_list, N_list):
@@ -399,20 +385,12 @@ class HessianFree(torch.optim.Optimizer):
         num_data = sum(N_list)
         return grad / num_data
 
-    def _acc_mvp(self, model, loss_func, datalist, x):
-        """Accumulate the matrix-vector products with a vector `x` over a given
-        list of `(inputs, targets)` pairs.
-        """
-
-        print("_acc_mvp")
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model, loss_func, datalist
-        )
-        print("N_list = ", N_list)
+    def _acc_mvp(self, losses_list, outputs_list, N_list, x):
+        """TODO"""
 
         curvature_opt = self._group["curvature_opt"]
-        mvp = torch.zeros_like(parameters_to_vector(self._params_list))
 
+        mvp = torch.zeros_like(parameters_to_vector(self._params_list))
         for loss, outputs, N in zip(losses_list, outputs_list, N_list):
             if curvature_opt == "hessian":
                 mvp += N * self._Hv(loss, self._params_list, x)
@@ -435,33 +413,49 @@ class HessianFree(torch.optim.Optimizer):
         are evaluated over a list of mini-batches.
         """
 
-        # Set model to eval-mode?
-
+        # ----------------------------------------------------------------------
         # Forward
+        # ----------------------------------------------------------------------
         def forward():
-            return self._acc_loss_and_outputs(
+            losses_list, outputs_list, N_list = self._forward_lists(
                 model, loss_func, forward_datalist
             )
+            return self._acc_loss_and_outputs(losses_list, outputs_list, N_list)
 
-        # Try it out
-        print("\n===== Calling forward() =====")
-        forward()
+        # ----------------------------------------------------------------------
+        # Gradient
+        # ----------------------------------------------------------------------
 
         # Data for gradient computation
         if grad_datalist is None:
             grad_datalist = forward_datalist
 
+        # Forward pass for gradient computation
+        losses_list, _, N_list = self._forward_lists(
+            model, loss_func, grad_datalist
+        )
+
         # Gradient
-        print("\n===== Compute gradient =====")
-        grad = self._acc_grad(model, loss_func, grad_datalist)
+        grad = self._acc_grad(losses_list, N_list)
+
+        # ----------------------------------------------------------------------
+        # Matrix-vector product
+        # ----------------------------------------------------------------------
+
+        # Data for matrix-vector product
+        if mvp_datalist is None:
+            mvp_datalist = forward_datalist
+
+        # Forward pass for matrix-vector product
+        losses_list, outputs_list, N_list = self._forward_lists(
+            model, loss_func, mvp_datalist
+        )
 
         # Matrix vector product
         def mvp(x):
-            return self._acc_mvp(model, loss_func, mvp_datalist, x)
+            return self._acc_mvp(losses_list, outputs_list, N_list, x)
 
-        # Try it out
-        print("\n===== Calling mvp(x) =====")
-        x = torch.rand(parameters_to_vector(self._params_list).shape)
-        y = mvp(x)
-
+        # ----------------------------------------------------------------------
+        # Compute the optimization step
+        # ----------------------------------------------------------------------
         self.step(forward=forward, grad=grad, mvp=mvp, M_func=M_func)
