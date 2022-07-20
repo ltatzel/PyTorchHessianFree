@@ -458,6 +458,7 @@ class HessianFree(torch.optim.Optimizer):
         """
 
         def eval_mb_loss(loss, outputs):
+            """Return the mini-batch loss."""
             return loss
 
         return self._acc(
@@ -496,6 +497,7 @@ class HessianFree(torch.optim.Optimizer):
         init_grad = torch.zeros_like(parameters_to_vector(self._params_list))
 
         def eval_mb_grad(loss, outputs):
+            """Compute the mini-batch gradient for `loss`."""
             if not create_graph:
                 mb_grad = torch.autograd.grad(loss, self._params_list)
             else:
@@ -543,6 +545,7 @@ class HessianFree(torch.optim.Optimizer):
         init_mvp = torch.zeros_like(parameters_to_vector(self._params_list))
 
         def eval_mb_mvp(loss, outputs):
+            """Compute the matrix-vector product with `x`."""
             if curvature_opt == "hessian":
                 return self._Hv(loss, self._params_list, x)
             elif curvature_opt == "ggn":
@@ -593,6 +596,25 @@ class HessianFree(torch.optim.Optimizer):
                 `test_reduction`-method.
         """
 
+        # If not given, set the data list to `forward_datalist`
+        if grad_datalist is None:
+            grad_datalist = forward_datalist
+
+        if mvp_datalist is None:
+            mvp_datalist = forward_datalist
+
+        # Share forward lists for gradient and matrix-vector products if both
+        # lists refer to the same object
+        share_forward_lists = False
+        if grad_datalist is mvp_datalist:
+            share_forward_lists = True
+            if self.verbose:
+                msg = "\nUsing shared forward lists for the computation of "
+                msg += "gradients and the matrix-vector products."
+                print(msg)
+
+        curvature_opt = self._group["curvature_opt"]
+
         # ----------------------------------------------------------------------
         # Forward
         # ----------------------------------------------------------------------
@@ -615,44 +637,51 @@ class HessianFree(torch.optim.Optimizer):
             )
 
         # ----------------------------------------------------------------------
+        # Share forward lists for gradient and matrix-vector products?
+        # ----------------------------------------------------------------------
+        if share_forward_lists:
+            losses_list, outputs_list, N_list = self._forward_lists(
+                model,
+                loss_func,
+                grad_datalist,  # == mvp_datalist
+                self.device,
+                with_outputs=curvature_opt == "ggn",
+            )
+
+        # ----------------------------------------------------------------------
         # Gradient
         # ----------------------------------------------------------------------
 
-        # Data for gradient computation
-        if grad_datalist is None:
-            grad_datalist = forward_datalist
-
-        # Forward pass for gradient computation
-        losses_list, _, N_list = self._forward_lists(
-            model,
-            loss_func,
-            grad_datalist,
-            self.device,
-            with_outputs=False,
-        )
-
-        # Gradient
-        grad = self._acc_grad(losses_list, N_list, reduction)
+        # Forward pass and gradient with `create_graph=True` if necessary
+        if share_forward_lists:
+            grad = self._acc_grad(
+                losses_list, N_list, reduction, create_graph=True
+            )
+        else:
+            losses_list, _, N_list = self._forward_lists(
+                model,
+                loss_func,
+                grad_datalist,
+                self.device,
+                with_outputs=False,
+            )
+            grad = self._acc_grad(
+                losses_list, N_list, reduction, create_graph=False
+            )
 
         # ----------------------------------------------------------------------
         # Matrix-vector product
         # ----------------------------------------------------------------------
 
-        # Data for matrix-vector product
-        if mvp_datalist is None:
-            mvp_datalist = forward_datalist
-
-        curvature_opt = self._group["curvature_opt"]
-
-        # Forward pass for matrix-vector product
-        with_outputs = True if curvature_opt == "ggn" else False
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model,
-            loss_func,
-            mvp_datalist,
-            self.device,
-            with_outputs=with_outputs,
-        )
+        # Forward pass if necessray
+        if not share_forward_lists:
+            losses_list, outputs_list, N_list = self._forward_lists(
+                model,
+                loss_func,
+                mvp_datalist,
+                self.device,
+                with_outputs=curvature_opt == "ggn",
+            )
 
         # Matrix vector product
         def mvp(x):
