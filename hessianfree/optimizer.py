@@ -349,7 +349,7 @@ class HessianFree(torch.optim.Optimizer):
         )
 
     @staticmethod
-    def _forward_lists(model, loss_func, datalist, device):
+    def _forward_lists(model, loss_func, datalist, device, with_outputs=False):
         """Evaluate the network's outputs, the corresponding losses and mini-
         batch sizes for all mini-batches in `datalist`.
 
@@ -361,10 +361,14 @@ class HessianFree(torch.optim.Optimizer):
             datalist (list): A list of `(inputs, targets)`-tuples.
             device (torch.device): `inputs` and `targets` are moved to this
                 device before the forward pass is applied.
+            with_outputs (bool): If `True`, a list of the mini-batch outputs is
+                created and returned; if `False`, all list entries are `None`.
 
         Returns:
             losses_list (list): List containing the mini-batch loss values.
-            outputs_list (list) List containing the mini-batch outputs.
+            outputs_list (list) List containing the mini-batch outputs if
+                `with_outputs` is `True`; if `with_outputs == False`, all list
+                entries are `None`.
             N_list (list): List containing the mini-batch sizes.
         """
 
@@ -373,11 +377,16 @@ class HessianFree(torch.optim.Optimizer):
         N_list = []
 
         for inputs, targets in datalist:
-            inputs, targets = inputs.to(device), targets.to(device)
-
             N_list.append(targets.shape[0])
-            outputs_list.append(model(inputs))
-            losses_list.append(loss_func(outputs_list[-1], targets))
+
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            losses_list.append(loss_func(outputs, targets))
+
+            if with_outputs:
+                outputs_list.append(outputs)
+            else:
+                outputs_list.append(None)
 
         return losses_list, outputs_list, N_list
 
@@ -429,12 +438,11 @@ class HessianFree(torch.optim.Optimizer):
         # Return result
         return result
 
-    def _acc_loss(self, losses_list, outputs_list, N_list, reduction):
+    def _acc_loss(self, losses_list, N_list, reduction):
         """Accumulate the loss.
 
         Args:
             losses_list (list): List containing mini-batch loss-values.
-            outputs_list (list): List containing mini-batch outputs.
             N_list (list): List containing mini-batch sizes.
             reduction (str): Either `"mean"` or `"sum"`. The returned loss is
                 the sum of
@@ -452,18 +460,16 @@ class HessianFree(torch.optim.Optimizer):
         def eval_mb_loss(loss, outputs):
             return loss
 
-        loss = self._acc(
+        return self._acc(
             losses_list,
-            outputs_list,
+            [None] * len(losses_list),
             N_list,
             init_result=0.0,
             eval_mb=eval_mb_loss,
             reduction=reduction,
         )
 
-        return loss
-
-    def _acc_grad(self, losses_list, N_list, reduction):
+    def _acc_grad(self, losses_list, N_list, reduction, create_graph=False):
         """Accumulate the gradient.
 
         Args:
@@ -478,6 +484,10 @@ class HessianFree(torch.optim.Optimizer):
                   is the mini-batch size and `num_data` is the total number of
                   datapoints over all mini-batches. This results in the average
                   of the individual per-data gradients.
+            create_graph (bool): If `True`, the mini-batch gradients will be
+                computed with the `create_graph=True` option. This is necessary
+                if we want to re-use `losses_list` for computing higher order
+                derivatives.
 
         Returns:
             The accumulated gradient vector.
@@ -486,7 +496,12 @@ class HessianFree(torch.optim.Optimizer):
         init_grad = torch.zeros_like(parameters_to_vector(self._params_list))
 
         def eval_mb_grad(loss, outputs):
-            mb_grad = torch.autograd.grad(loss, self._params_list)
+            if not create_graph:
+                mb_grad = torch.autograd.grad(loss, self._params_list)
+            else:
+                mb_grad = torch.autograd.grad(
+                    loss, self._params_list, create_graph=True
+                )
             return parameters_to_vector(mb_grad).detach()
 
         return self._acc(
@@ -498,13 +513,16 @@ class HessianFree(torch.optim.Optimizer):
             reduction=reduction,
         )
 
-    def _acc_mvp(self, losses_list, outputs_list, N_list, reduction, x):
+    def _acc_mvp(
+        self, losses_list, outputs_list, N_list, curvature_opt, reduction, x
+    ):
         """Accumulate the matrix-vector product.
 
         Args:
             losses_list (list): List containing mini-batch loss-values.
             outputs_list (list): List containing mini-batch outputs.
             N_list (list): List containing mini-batch sizes.
+            curvature_opt (str): Either `"ggn"` or `"hessian"`.
             reduction (str): Either `"mean"` or `"sum"`. The returned matrix-
                 vector product is the sum of
                 - all mini-batch matrix-vector products if `reduction == "sum"`.
@@ -523,8 +541,6 @@ class HessianFree(torch.optim.Optimizer):
         """
 
         init_mvp = torch.zeros_like(parameters_to_vector(self._params_list))
-
-        curvature_opt = self._group["curvature_opt"]
 
         def eval_mb_mvp(loss, outputs):
             if curvature_opt == "hessian":
@@ -581,11 +597,20 @@ class HessianFree(torch.optim.Optimizer):
         # Forward
         # ----------------------------------------------------------------------
         def forward():
-            losses_list, outputs_list, N_list = self._forward_lists(
-                model, loss_func, forward_datalist, self.device
+            """Evaluate the loss for all mini-batches and accumulate these
+            values to obtain the overall loss.
+            """
+
+            losses_list, _, N_list = self._forward_lists(
+                model,
+                loss_func,
+                forward_datalist,
+                device=self.device,
+                with_outputs=False,
             )
+
             return (
-                self._acc_loss(losses_list, outputs_list, N_list, reduction),
+                self._acc_loss(losses_list, N_list, reduction),
                 None,  # outputs are set to `None`
             )
 
@@ -599,7 +624,11 @@ class HessianFree(torch.optim.Optimizer):
 
         # Forward pass for gradient computation
         losses_list, _, N_list = self._forward_lists(
-            model, loss_func, grad_datalist, self.device
+            model,
+            loss_func,
+            grad_datalist,
+            self.device,
+            with_outputs=False,
         )
 
         # Gradient
@@ -613,15 +642,22 @@ class HessianFree(torch.optim.Optimizer):
         if mvp_datalist is None:
             mvp_datalist = forward_datalist
 
+        curvature_opt = self._group["curvature_opt"]
+
         # Forward pass for matrix-vector product
+        with_outputs = True if curvature_opt == "ggn" else False
         losses_list, outputs_list, N_list = self._forward_lists(
-            model, loss_func, mvp_datalist, self.device
+            model,
+            loss_func,
+            mvp_datalist,
+            self.device,
+            with_outputs=with_outputs,
         )
 
         # Matrix vector product
         def mvp(x):
             return self._acc_mvp(
-                losses_list, outputs_list, N_list, reduction, x
+                losses_list, outputs_list, N_list, curvature_opt, reduction, x
             )
 
         # ----------------------------------------------------------------------
@@ -631,7 +667,10 @@ class HessianFree(torch.optim.Optimizer):
 
     def test_reduction(self, model, loss_func, datalist, reduction):
         """This is a test method to make sure that the loss-function and the
-        specified reduction match.
+        specified reduction match. More precisely, we use `datalist` and call
+        the accumulation functions. We then convert the data list to a single
+        tuple `(ref_inputs, ref_targets)`. Both representations have to lead to
+        the same results for the loss, gradient and matrix-vector product.
 
         Args:
             model (torch.nn.Module): The neural network mapping the `inputs`
@@ -643,73 +682,93 @@ class HessianFree(torch.optim.Optimizer):
                 list can be small: Two mini-batches are enough for testing
                 purposes.
             reduction (str): The reduction method used by the loss function. Let
-                the individual per-sample loss contributions be denoted by l_i.
-                If the loss_function is a sum over these contributions, use
-                `"sum"`; if it is an average, i.e. (1/N) * (l_1 + ... + l_N),
-                use `"mean"`.
+                the individual per-sample loss contributions be denoted by
+                `l_i`. If the loss_function is a sum over these contributions,
+                use `"sum"`; if it is an average, i.e. `(1/N) * (l_1 + ... +
+                l_N)`, use `"mean"`.
 
         This function will raise an exeption if the loss-function and the
         reduction do not match.
         """
+
+        if self.verbose:
+            print(f"\nTest reduction {reduction}")
 
         # Check the data list
         error_msg = "This test is only meaningful for a data list with at "
         error_msg += "least two entries."
         assert len(datalist) > 1, error_msg
 
-        # Turn datalist into two tensors: `inputs` and `targets`
+        # Sample random vector for testing the matrix-vector product
+        x = torch.rand(parameters_to_vector(self._params_list).shape)
+
+        # ----------------------------------------------------------------------
+        # Compute loss, gradient, matrix-vector product on `datalist`
+        # ----------------------------------------------------------------------
+
+        # Forward pass
+        curvature_opt = self._group["curvature_opt"]
+        with_outputs = True if curvature_opt == "ggn" else False
+        losses_list, outputs_list, N_list = self._forward_lists(
+            model,
+            loss_func,
+            datalist,
+            device=self.device,
+            with_outputs=with_outputs,
+        )
+
+        acc_loss = self._acc_loss(losses_list, N_list, reduction)
+        acc_grad = self._acc_grad(
+            losses_list, N_list, reduction, create_graph=True
+        )
+        acc_mvp = self._acc_mvp(
+            losses_list, outputs_list, N_list, curvature_opt, reduction, x
+        )
+
+        # ----------------------------------------------------------------------
+        # Compute loss, gradient, matrix-vector product on reference data
+        # ----------------------------------------------------------------------
+
+        # Turn datalist into two tensors: `ref_inputs` and `ref_targets`
         inputs_list = []
         targets_list = []
         for inputs, targets in datalist:
             inputs_list.append(inputs)
             targets_list.append(targets)
+        ref_inputs = torch.cat(inputs_list, dim=0)
+        ref_targets = torch.cat(targets_list, dim=0)
 
-        ref_inputs = torch.cat(inputs_list, dim=0).clone()
-        ref_targets = torch.cat(targets_list, dim=0).clone()
-
-        error_msg = f"Inconsistent results for reduction = {reduction}"
-
-        # ----------------------------------------------------------------------
-        # Test loss and outputs
-        # ----------------------------------------------------------------------
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model, loss_func, datalist, device="cpu"
-        )
-        acc_loss = self._acc_loss(losses_list, outputs_list, N_list, reduction)
-        ref_loss = loss_func(model(ref_inputs), ref_targets)
-
-        assert torch.allclose(acc_loss, ref_loss), error_msg
-
-        # ----------------------------------------------------------------------
-        # Test gradient
-        # ----------------------------------------------------------------------
-        acc_grad = self._acc_grad(losses_list, N_list, reduction)
-        ref_grad = parameters_to_vector(
-            torch.autograd.grad(ref_loss, self._params_list)
-        ).detach()
-
-        assert torch.allclose(acc_grad, ref_grad), error_msg
-
-        # ----------------------------------------------------------------------
-        # Test matrix-vector products
-        # ----------------------------------------------------------------------
-        x = torch.rand(acc_grad.shape)  # Sample random vector
-
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model, loss_func, datalist, device="cpu"
-        )
-        acc_mvp = self._acc_mvp(losses_list, outputs_list, N_list, reduction, x)
-
-        # Reference matrix-vector product
+        # Forward pass
         ref_outputs = model(ref_inputs)
         ref_loss = loss_func(ref_outputs, ref_targets)
 
-        curvature_opt = self._group["curvature_opt"]
+        ref_grad = parameters_to_vector(
+            torch.autograd.grad(ref_loss, self._params_list, create_graph=True)
+        ).detach()
+
         if curvature_opt == "ggn":
             ref_mvp = self._Gv(ref_loss, ref_outputs, self._params_list, x)
         elif curvature_opt == "hessian":
             ref_mvp = self._Hv(ref_loss, self._params_list, x)
 
-        assert torch.allclose(acc_mvp, ref_mvp), error_msg
+        # ----------------------------------------------------------------------
+        # Tests: Compare both approaches
+        # ----------------------------------------------------------------------
 
-        print(f"All tests passed for reduction {reduction}.")
+        error_msg = f"Inconsistent results for reduction = {reduction}"
+
+        # Test Loss
+        assert torch.allclose(acc_loss, ref_loss), error_msg
+        if self.verbose:
+            print("  Loss: Test passed")
+
+        # Test gradient
+        assert torch.allclose(acc_grad, ref_grad), error_msg
+        if self.verbose:
+            print("  Gradient: Test passed")
+
+        # Test matrix-vector products
+        assert torch.allclose(acc_mvp, ref_mvp), error_msg
+        if self.verbose:
+            print("  Matrix-vector product: Test passed")
+            print("  All tests passed")

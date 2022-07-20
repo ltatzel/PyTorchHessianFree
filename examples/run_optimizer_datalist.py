@@ -55,7 +55,11 @@ if __name__ == "__main__":
     loss_function = torch.nn.MSELoss(reduction="mean")
 
     # Set up the optimizer
-    opt = HessianFree(model.parameters(), verbose=True)
+    opt = HessianFree(model.parameters(), curvature_opt="ggn", verbose=True)
+
+    # Test redution
+    test_datalist = forward_datalist
+    opt.test_reduction(model, loss_function, test_datalist, reduction="mean")
 
     # Run the optimizer for a few steps (with default hyperparameters)
     for step_idx in range(2):
