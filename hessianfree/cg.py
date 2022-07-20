@@ -127,9 +127,9 @@ def cg(
         if pAp > 0:
             return pAp
         else:
-            msg = f"[cg]: Directional curvature pAp = {pAp:.3e} <= 0 "
-            msg += f"detected in iteration {iter}. This is a violation to "
-            msg += "the assumption of positive definiteness."
+            msg = f"Directional curvature pAp = {pAp:.3e} <= 0 detected in cg-"
+            msg += f"iteration {iter}. This is a violation to the assumption "
+            msg += "of positive definiteness."
             warn(msg)
 
         # How to deal with non-positive curvature

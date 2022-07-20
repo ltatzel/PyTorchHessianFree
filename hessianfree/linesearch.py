@@ -67,7 +67,9 @@ def simple_linesearch(
     # The directional derivative multiplied by c
     c_direc_deriv = c * torch.dot(f_grad_0, step).item()
     if c_direc_deriv >= 0:
-        warn("[linesearch]: `update_vec` is not a descent direction.")
+        msg = "`update_vec`-parameter in `simple_linesearch` is not a descent "
+        msg += f"direction. The directional derivative is {c_direc_deriv:.6f}."
+        warn(msg)
 
     # Initialize
     alpha = init_alpha
