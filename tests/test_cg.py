@@ -113,7 +113,7 @@ def test_cg_m_iters(seed, dim, x0_none, preconditioning, device):
         return torch.matmul(A, x)
 
     # Define `x0`
-    x0 = None if x0_none else 2 * (torch.rand(dim) - 0.5)
+    x0 = None if x0_none else (2 * (torch.rand(dim) - 0.5)).to(device)
 
     # Define preconditioner: Inverse of diagonal of A
     if preconditioning:
