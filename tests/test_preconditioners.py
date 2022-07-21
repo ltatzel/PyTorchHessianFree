@@ -12,14 +12,16 @@ from torch.nn.utils.convert_parameters import parameters_to_vector
 from test_utils import get_small_nn_testproblem
 
 
-def empirical_fisher_autograd(model, loss_function, inputs, targets, reduction):
+def empirical_fisher_autograd(
+    model, loss_function, inputs, targets, reduction, device
+):
     """Compute the empirical Fisher matrix using autograd."""
 
     params_list = [p for p in model.parameters() if p.requires_grad]
     num_params = sum(p.numel() for p in params_list)
 
     # Compute individual gradients, add outer product to `F`
-    F = torch.zeros((num_params, num_params))
+    F = torch.zeros((num_params, num_params)).to(device)
     for (input_i, target_i) in zip(inputs, targets):
         loss_i = loss_function(model(input_i), target_i)
         grad_i = torch.autograd.grad(loss_i, params_list, retain_graph=False)
@@ -84,7 +86,7 @@ def test_diag_EF(seed, reduction, N, device):
     # Compute the empirical Fisher matrix, extract the diagonal
     diag_EF = torch.diag(
         empirical_fisher_autograd(
-            model, loss_function, inputs, targets, reduction=reduction
+            model, loss_function, inputs, targets, reduction, device
         )
     )
 
