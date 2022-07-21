@@ -26,6 +26,10 @@ if torch.cuda.is_available():
     DEVICES.append(torch.device("cuda"))
 DEVICES_IDS = [f"device = {d}" for d in DEVICES]
 
+# The "incrementally" computed residual in cg might differ slightly from
+# `A @ x_cg - b`.
+EPS = 5e-7
+
 
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
 @pytest.mark.parametrize("dim", DIMS, ids=DIMS_IDS)
@@ -80,7 +84,7 @@ def test_cg_residuals(seed, dim, tol, atol, preconditioning, device):
     res_norm = torch.linalg.norm(A_func(x_cg) - b)
     b_norm = torch.linalg.norm(b)
     print(f"||b|| = {b_norm:.3e}")
-    assert res_norm <= max(tol * b_norm, atol), "cg did not converge."
+    assert res_norm <= max(tol * b_norm, atol) + EPS, "cg did not converge."
 
 
 # Default tolerances for terminating cg
