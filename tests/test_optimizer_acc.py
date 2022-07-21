@@ -120,6 +120,7 @@ N_LISTS_IDS = [f"N_list = {N_list}" for N_list in N_LISTS]
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
 @pytest.mark.filterwarnings("ignore:The reduction ratio `rho` is negative.")
 @pytest.mark.filterwarnings("ignore:Directional curvature pAp")
+@pytest.mark.filterwarnings("ignore:`update_vec`-parameter in")
 def test_step(seed, curvature_opt, reduction, N_list, device):
     """Create two identical models and set up two corresponding optimizers: One
     uses the `step`-method on the `(inputs, targets)`-tuple, the other one uses

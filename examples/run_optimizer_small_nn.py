@@ -5,7 +5,7 @@
 import torch
 from hessianfree.optimizer import HessianFree
 
-from examples.example_utils import get_small_nn_testproblem
+from example_utils import get_small_nn_testproblem
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

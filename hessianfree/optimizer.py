@@ -693,7 +693,7 @@ class HessianFree(torch.optim.Optimizer):
                 `test_reduction`-method.
         """
 
-        # If not given, set the data list to `forward_datalist`
+        # If not given, set the data lists to `forward_datalist`
         if grad_datalist is None:
             grad_datalist = forward_datalist
 
