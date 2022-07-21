@@ -1,5 +1,5 @@
 """In this example, we train a small neural network on some dummy data using the
-`HessianFree` optimizer.
+`HessianFree` optimizer with preconditioning.
 """
 
 import torch
@@ -31,7 +31,13 @@ if __name__ == "__main__":
             loss = loss_function(outputs, targets)
             return loss, outputs
 
+        # Optional: Use the diagonal of the empirical Fisher as preconditioner
+        M_func = opt.get_preconditioner(
+            model, loss_function, inputs, targets, reduction="mean"
+        )
+
         opt.step(
             forward=forward,
+            M_func=M_func,
             test_deterministic=True if step_idx == 0 else False,
         )
