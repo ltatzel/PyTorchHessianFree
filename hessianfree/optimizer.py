@@ -730,6 +730,7 @@ class HessianFree(torch.optim.Optimizer):
 
         # Sample random vector for testing the matrix-vector product
         x = torch.rand(parameters_to_vector(self._params_list).shape)
+        x.to(self.device)
 
         # ----------------------------------------------------------------------
         # Compute loss, gradient, matrix-vector product on `datalist`
