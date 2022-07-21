@@ -91,6 +91,7 @@ class HessianFree(torch.optim.Optimizer):
         self._params_list = [p for p in self._params if p.requires_grad]
         self.device = self._params_list[0].device
 
+    # step #####################################################################
     def step(
         self,
         forward,
@@ -416,30 +417,148 @@ class HessianFree(torch.optim.Optimizer):
         """
         self.state["x0"] = new_x0
 
-    def get_preconditioner(
+    # acc_step #################################################################
+    def acc_step(
         self,
         model,
         loss_func,
-        inputs,
-        targets,
-        reduction,
-        exponent=None,
-        use_backpack=True,
+        forward_datalist,
+        grad_datalist=None,
+        mvp_datalist=None,
+        M_func=None,
+        reduction="mean",
+        test_deterministic=False,
     ):
-        """This is simply a wrapper function calling `diag_EF_preconditioner`
-        from `preconditioners.py`. It automatically sets the correct damping
-        value currently used by the optimizer.
+        """Perform an optimization step, where the loss-values (used e.g. in
+        the line search), gradient and curvature are each evaluated over a list
+        of mini-batches. These lists may differ. In this regard, this method is
+        more flexible than `step` and its "iterative" computations allow to use
+        very large batch sizes.
+
+        Args:
+            model (torch.nn.Module): The neural network mapping the `inputs`
+                contained in `datalist` to `outputs`.
+            loss_func (torch.nn.Module): The loss function mapping the tuple
+                `(outputs, targets)` to the loss value.
+            forward_datalist (list): A list of `(inputs, targets)`-tuples used
+                by the `forward` function (that evaluates the loss).
+            grad_datalist (list or None): A list of `(inputs, targets)`-tuples
+                used for the computation of the gradient.
+            mvp_datalist (list or None): A list of `(inputs, targets)`-tuples
+                used for the computation of the matrix-vector products.
+            M_func (callable or None): The preconditioner for cg. This is
+                supposed to be an approximation of the inverse of the damped (!)
+                curvature matrix.
+            reduction (str): The reduction method used by the loss function. Let
+                the individual per-sample loss contributions be denoted by l_i.
+                If the loss_function is a sum over these contributions, use
+                `"sum"`; if it is an average, i.e. (1/N) * (l_1 + ... + l_N),
+                use `"mean"`. To make sure, you can test the reduction with the
+                `test_reduction`-method.
         """
 
-        diag_EF_preconditioner(
-            model,
-            loss_func,
-            inputs,
-            targets,
-            reduction,
-            damping=self._group["damping"],
-            exponent=exponent,
-            use_backpack=use_backpack,
+        # If not given, set the data lists to `forward_datalist`
+        if grad_datalist is None:
+            grad_datalist = forward_datalist
+
+        if mvp_datalist is None:
+            mvp_datalist = forward_datalist
+
+        # Share forward lists for gradient and matrix-vector products if both
+        # lists refer to the same object
+        share_forward_lists = False
+        if grad_datalist is mvp_datalist:
+            share_forward_lists = True
+            if self.verbose:
+                msg = "\nUsing shared forward lists for the computation of "
+                msg += "gradients and the matrix-vector products."
+                print(msg)
+
+        curvature_opt = self._group["curvature_opt"]
+
+        # ----------------------------------------------------------------------
+        # Forward
+        # ----------------------------------------------------------------------
+        def forward():
+            """Evaluate the loss for all mini-batches and accumulate these
+            values to obtain the overall loss.
+            """
+
+            losses_list, _, N_list = self._forward_lists(
+                model,
+                loss_func,
+                forward_datalist,
+                device=self.device,
+                with_outputs=False,
+            )
+
+            return (
+                self._acc_loss(losses_list, N_list, reduction),
+                None,  # outputs are set to `None`
+            )
+
+        # ----------------------------------------------------------------------
+        # Share forward lists for gradient and matrix-vector products?
+        # ----------------------------------------------------------------------
+        if share_forward_lists:
+            losses_list, outputs_list, N_list = self._forward_lists(
+                model,
+                loss_func,
+                grad_datalist,  # == mvp_datalist
+                self.device,
+                with_outputs=curvature_opt == "ggn",
+            )
+
+        # ----------------------------------------------------------------------
+        # Gradient
+        # ----------------------------------------------------------------------
+
+        # Forward pass and gradient with `create_graph=True` if necessary
+        if share_forward_lists:
+            grad = self._acc_grad(
+                losses_list, N_list, reduction, create_graph=True
+            )
+        else:
+            losses_list, _, N_list = self._forward_lists(
+                model,
+                loss_func,
+                grad_datalist,
+                self.device,
+                with_outputs=False,
+            )
+            grad = self._acc_grad(
+                losses_list, N_list, reduction, create_graph=False
+            )
+
+        # ----------------------------------------------------------------------
+        # Matrix-vector product
+        # ----------------------------------------------------------------------
+
+        # Forward pass if necessray
+        if not share_forward_lists:
+            losses_list, outputs_list, N_list = self._forward_lists(
+                model,
+                loss_func,
+                mvp_datalist,
+                self.device,
+                with_outputs=curvature_opt == "ggn",
+            )
+
+        # Matrix vector product
+        def mvp(x):
+            return self._acc_mvp(
+                losses_list, outputs_list, N_list, curvature_opt, reduction, x
+            )
+
+        # ----------------------------------------------------------------------
+        # Compute the optimization step
+        # ----------------------------------------------------------------------
+        self.step(
+            forward=forward,
+            grad=grad,
+            mvp=mvp,
+            M_func=M_func,
+            test_deterministic=test_deterministic,
         )
 
     @staticmethod
@@ -654,149 +773,7 @@ class HessianFree(torch.optim.Optimizer):
             reduction=reduction,
         )
 
-    def acc_step(
-        self,
-        model,
-        loss_func,
-        forward_datalist,
-        grad_datalist=None,
-        mvp_datalist=None,
-        M_func=None,
-        reduction="mean",
-        test_deterministic=False,
-    ):
-        """Perform an optimization step, where the loss-values (used e.g. in
-        the line search), gradient and curvature are each evaluated over a list
-        of mini-batches. These lists may differ. In this regard, this method is
-        more flexible than `step` and its "iterative" computations allow to use
-        very large batch sizes.
-
-        Args:
-            model (torch.nn.Module): The neural network mapping the `inputs`
-                contained in `datalist` to `outputs`.
-            loss_func (torch.nn.Module): The loss function mapping the tuple
-                `(outputs, targets)` to the loss value.
-            forward_datalist (list): A list of `(inputs, targets)`-tuples used
-                by the `forward` function (that evaluates the loss).
-            grad_datalist (list or None): A list of `(inputs, targets)`-tuples
-                used for the computation of the gradient.
-            mvp_datalist (list or None): A list of `(inputs, targets)`-tuples
-                used for the computation of the matrix-vector products.
-            M_func (callable or None): The preconditioner for cg. This is
-                supposed to be an approximation of the inverse of the damped (!)
-                curvature matrix.
-            reduction (str): The reduction method used by the loss function. Let
-                the individual per-sample loss contributions be denoted by l_i.
-                If the loss_function is a sum over these contributions, use
-                `"sum"`; if it is an average, i.e. (1/N) * (l_1 + ... + l_N),
-                use `"mean"`. To make sure, you can test the reduction with the
-                `test_reduction`-method.
-        """
-
-        # If not given, set the data lists to `forward_datalist`
-        if grad_datalist is None:
-            grad_datalist = forward_datalist
-
-        if mvp_datalist is None:
-            mvp_datalist = forward_datalist
-
-        # Share forward lists for gradient and matrix-vector products if both
-        # lists refer to the same object
-        share_forward_lists = False
-        if grad_datalist is mvp_datalist:
-            share_forward_lists = True
-            if self.verbose:
-                msg = "\nUsing shared forward lists for the computation of "
-                msg += "gradients and the matrix-vector products."
-                print(msg)
-
-        curvature_opt = self._group["curvature_opt"]
-
-        # ----------------------------------------------------------------------
-        # Forward
-        # ----------------------------------------------------------------------
-        def forward():
-            """Evaluate the loss for all mini-batches and accumulate these
-            values to obtain the overall loss.
-            """
-
-            losses_list, _, N_list = self._forward_lists(
-                model,
-                loss_func,
-                forward_datalist,
-                device=self.device,
-                with_outputs=False,
-            )
-
-            return (
-                self._acc_loss(losses_list, N_list, reduction),
-                None,  # outputs are set to `None`
-            )
-
-        # ----------------------------------------------------------------------
-        # Share forward lists for gradient and matrix-vector products?
-        # ----------------------------------------------------------------------
-        if share_forward_lists:
-            losses_list, outputs_list, N_list = self._forward_lists(
-                model,
-                loss_func,
-                grad_datalist,  # == mvp_datalist
-                self.device,
-                with_outputs=curvature_opt == "ggn",
-            )
-
-        # ----------------------------------------------------------------------
-        # Gradient
-        # ----------------------------------------------------------------------
-
-        # Forward pass and gradient with `create_graph=True` if necessary
-        if share_forward_lists:
-            grad = self._acc_grad(
-                losses_list, N_list, reduction, create_graph=True
-            )
-        else:
-            losses_list, _, N_list = self._forward_lists(
-                model,
-                loss_func,
-                grad_datalist,
-                self.device,
-                with_outputs=False,
-            )
-            grad = self._acc_grad(
-                losses_list, N_list, reduction, create_graph=False
-            )
-
-        # ----------------------------------------------------------------------
-        # Matrix-vector product
-        # ----------------------------------------------------------------------
-
-        # Forward pass if necessray
-        if not share_forward_lists:
-            losses_list, outputs_list, N_list = self._forward_lists(
-                model,
-                loss_func,
-                mvp_datalist,
-                self.device,
-                with_outputs=curvature_opt == "ggn",
-            )
-
-        # Matrix vector product
-        def mvp(x):
-            return self._acc_mvp(
-                losses_list, outputs_list, N_list, curvature_opt, reduction, x
-            )
-
-        # ----------------------------------------------------------------------
-        # Compute the optimization step
-        # ----------------------------------------------------------------------
-        self.step(
-            forward=forward,
-            grad=grad,
-            mvp=mvp,
-            M_func=M_func,
-            test_deterministic=test_deterministic,
-        )
-
+    # misc #####################################################################
     def test_reduction(self, model, loss_func, datalist, reduction):
         """This is a test method to make sure that the loss-function and the
         specified reduction match. More precisely, we use `datalist` and call
@@ -920,3 +897,29 @@ class HessianFree(torch.optim.Optimizer):
         else:
             if self.verbose:
                 print("  All tests passed")
+
+    def get_preconditioner(
+        self,
+        model,
+        loss_func,
+        inputs,
+        targets,
+        reduction,
+        exponent=None,
+        use_backpack=True,
+    ):
+        """This is simply a wrapper function calling `diag_EF_preconditioner`
+        from `preconditioners.py`. It automatically sets the correct damping
+        value currently used by the optimizer.
+        """
+
+        diag_EF_preconditioner(
+            model,
+            loss_func,
+            inputs,
+            targets,
+            reduction,
+            damping=self._group["damping"],
+            exponent=exponent,
+            use_backpack=use_backpack,
+        )
