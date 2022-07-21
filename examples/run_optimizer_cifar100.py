@@ -17,7 +17,7 @@ if __name__ == "__main__":
     torch.manual_seed(0)
 
     # Set up problem and optimizer
-    model, train_loader, loss_function = get_cifar100_testproblem()
+    model, train_loader, loss_function = get_cifar100_testproblem(device=DEVICE)
     train_loader = iter(train_loader)
     model.eval()  # for deterministic behavior
     opt = HessianFree(model.parameters(), verbose=True)
