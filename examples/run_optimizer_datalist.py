@@ -1,73 +1,52 @@
-"""This script runs the `HessianFree` optimizer on a small test problem using
-the `step_datalists` method.
+"""In this example, we train a small neural network on some dummy data using the
+`HessianFree` optimizer. Here, we can use different data for the loss, the
+gradient and the matrix-vector products.
 """
 
 import torch
 from hessianfree.optimizer import HessianFree
 
+from examples.example_utils import get_small_nn_testproblem
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-CURVATURE_OPT = "ggn"  # "hessian" or "ggn"
-DAMPING = 1e-3
 
 
-# Data
+# Data matching the testproblem from `get_small_nn_testproblem`
 def generate_datalist(N_list):
     datalist = []
     for N in N_list:
-        inputs = torch.rand(N, D_in).to(DEVICE)
-        targets = torch.rand(N, D_out).to(DEVICE)
-        datalist.append((inputs, targets))
+        _, data, _ = get_small_nn_testproblem(device=DEVICE)
+        datalist.append(data)
     return datalist
 
 
 if __name__ == "__main__":
 
+    print(f"\nRunning example on DEVICE = {DEVICE}")
+
     torch.manual_seed(0)
 
-    print(f"\nRunning on DEVICE = {DEVICE}")
-
-    # Problem parameters
-    D_in = 7
-    D_hidden = 5
-    D_out = 3
-
-    forward_datalist = generate_datalist(N_list=[2, 3])
-    grad_datalist = generate_datalist(N_list=[3, 4, 1])
-    mvp_datalist = generate_datalist(N_list=[3, 1, 5])
-
-    # Model
-    model = torch.nn.Sequential(
-        torch.nn.Linear(D_in, D_hidden),
-        torch.nn.ReLU(),
-        torch.nn.Sequential(
-            torch.nn.Linear(D_hidden, D_hidden),
-            torch.nn.ReLU(),
-        ),
-        torch.nn.Linear(D_hidden, D_out),
-    ).to(DEVICE)
-
-    # Freeze parameters of first layer --> some parameters not trainable
-    first_layer = next(model.children())
-    for param in first_layer.parameters():
-        param.requires_grad = False
-
-    # Loss function
-    loss_function = torch.nn.MSELoss(reduction="mean")
-
-    # Set up the optimizer
+    # Set up problem and optimizer
+    model, _, loss_function = get_small_nn_testproblem(device=DEVICE)
     opt = HessianFree(model.parameters(), curvature_opt="ggn", verbose=True)
 
-    # Test redution
-    test_datalist = forward_datalist
+    # Optinal: Test reduction
+    test_datalist = generate_datalist([2, 3])
     opt.test_reduction(model, loss_function, test_datalist, reduction="mean")
 
-    # Run the optimizer for a few steps (with default hyperparameters)
     for step_idx in range(2):
         print(f"\n===== STEP {step_idx} =====")
+
+        # Sample new dummy data
+        forward_datalist = generate_datalist([2, 3])
+        grad_datalist = generate_datalist([3, 4, 1])
+        mvp_datalist = generate_datalist([3, 1, 5])
+
         opt.acc_step(
             model,
             loss_function,
             forward_datalist,
-            grad_datalist,  # or `None`
-            mvp_datalist,  # or `None`
+            grad_datalist,
+            mvp_datalist,
+            test_deterministic=True if step_idx == 0 else False,
         )
