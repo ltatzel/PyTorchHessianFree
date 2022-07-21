@@ -97,12 +97,14 @@ class HessianFree(torch.optim.Optimizer):
         grad=None,
         mvp=None,
         M_func=None,
+        test_deterministic=False,
     ):
         """TODO
 
         forward: Used for everything after cg. Returns a loss-outputs-tuple
             (outputs can be `None`, but then `curvature_opt` cannot be `"ggn"`).
-            You may want to check that the model is in eval mode.
+            You may want to check that the model is in eval mode. The returned
+            loss has to be a torch.Tensor
         grad: The gradient of the loss function. It is used as right hand side
             in cg and in the line search. If not given, this is coputed based on
             `forward`.
@@ -123,16 +125,20 @@ class HessianFree(torch.optim.Optimizer):
             print("\nInformation on parameters...")
 
             num_params = sum(p.numel() for p in self._params)
-            print("Total number of parameters: ", num_params)
+            print("  Total number of parameters: ", num_params)
 
             num_params = sum(p.numel() for p in self._params if p.requires_grad)
-            print("Number of trainable parameters: ", num_params)
+            print("  Number of trainable parameters: ", num_params)
 
-            print("Device = ", self.device)
+            print("  Device = ", self.device)
 
         # ----------------------------------------------------------------------
         # Set up linear system
         # ----------------------------------------------------------------------
+
+        # Test if the behavior of `forward` is determinsitic
+        if test_deterministic:
+            self._test_forward_determinisitc(forward)
 
         # Forward pass
         loss, outputs = forward()
@@ -159,6 +165,10 @@ class HessianFree(torch.optim.Optimizer):
 
                 def mvp(x):
                     return self._Gv(loss, outputs, self._params_list, x)
+
+        # Test if the behavior of `mvp` is determinsitic
+        if test_deterministic:
+            self._test_mvp_deterministic(mvp)
 
         # ----------------------------------------------------------------------
         # Apply (preconditioned) cg
@@ -255,6 +265,90 @@ class HessianFree(torch.optim.Optimizer):
             msg = f"Initial loss = {init_loss:.6f} --> "
             msg += f"final loss = {final_loss:.6f}"
             print(msg)
+
+    def _test_forward_determinisitc(self, forward):
+        """Test if the behavior of the `forward` function is deterministic: Call
+        this function two times and check if the retuned values are identical.
+        If this is not the case, a warning is raised.
+
+        Args:
+            forward (callable): A function that performs the forward-pass. It
+                returns a tuple `(loss, outputs)` of `torch.Tensor`s. `outputs`
+                can be `None`.
+
+        Raises:
+            Warning if non-deterministic behavior is detected.
+        """
+
+        if self.verbose:
+            print("\nTest deterministic behavior of `forward`...")
+        deterministic = True
+
+        # Compute losses and outputs
+        loss_1, outputs_1 = forward()
+        loss_2, outputs_2 = forward()
+
+        # Check outputs
+        if outputs_1 is not None and outputs_2 is not None:
+            if self.verbose:
+                print("  Test outputs")
+            if not torch.allclose(outputs_1, outputs_2):
+                if self.verbose:
+                    print("  Outputs non-deterministic")
+                deterministic = False
+
+        # Check loss values
+        if self.verbose:
+            print("  Test loss values")
+        if not torch.allclose(loss_1, loss_2):
+            if self.verbose:
+                print("  Loss values non-deterministic")
+            deterministic = False
+
+        if not deterministic:
+            msg = "Non-determinisitc behaviour detected. Consider setting your "
+            msg += "model to evaluation mode, i.e. `model.eval()`."
+            warn(msg)
+        else:
+            if self.verbose:
+                print("  All tests passed")
+
+    def _test_mvp_deterministic(self, mvp):
+        """Test if the behavior of the `mvp` function is deterministic: Call
+        this function two times and check if the retuned values are identical.
+        If this is not the case, a warning is raised.
+
+        Args:
+            mvp (callable): `mvp(x)` computes the matrix-vector product with the
+                vector `x`.
+
+        Raises:
+            Warning if non-deterministic behavior is detected.
+        """
+
+        if self.verbose:
+            print("\nTest deterministic behavior of `mvp`...")
+        deterministic = True
+
+        # Compute matrix-vector product
+        x = torch.randn_like(parameters_to_vector(self._params_list))
+        x = x.to(self.device)
+        mvp_1 = mvp(x)
+        mvp_2 = mvp(x)
+
+        # Check matrix-vector products
+        if not torch.allclose(mvp_1, mvp_2):
+            if self.verbose:
+                print("  Matrix-vector product non-deterministic")
+            deterministic = False
+
+        if not deterministic:
+            msg = "Non-determinisitc behaviour detected. Consider setting your "
+            msg += "model to evaluation mode, i.e. `model.eval()`."
+            warn(msg)
+        else:
+            if self.verbose:
+                print("  All tests passed")
 
     @staticmethod
     def _Hv(loss, params_list, vec):
@@ -569,10 +663,13 @@ class HessianFree(torch.optim.Optimizer):
         mvp_datalist=None,
         M_func=None,
         reduction="mean",
+        test_deterministic=False,
     ):
         """Perform an optimization step, where the loss-values (used e.g. in
         the line search), gradient and curvature are each evaluated over a list
-        of mini-batches. These lists may differ.
+        of mini-batches. These lists may differ. In this regard, this method is
+        more flexible than `step` and its "iterative" computations allow to use
+        very large batch sizes.
 
         Args:
             model (torch.nn.Module): The neural network mapping the `inputs`
@@ -692,7 +789,13 @@ class HessianFree(torch.optim.Optimizer):
         # ----------------------------------------------------------------------
         # Compute the optimization step
         # ----------------------------------------------------------------------
-        self.step(forward=forward, grad=grad, mvp=mvp, M_func=M_func)
+        self.step(
+            forward=forward,
+            grad=grad,
+            mvp=mvp,
+            M_func=M_func,
+            test_deterministic=test_deterministic,
+        )
 
     def test_reduction(self, model, loss_func, datalist, reduction):
         """This is a test method to make sure that the loss-function and the
@@ -721,7 +824,7 @@ class HessianFree(torch.optim.Optimizer):
         """
 
         if self.verbose:
-            print(f"\nTest reduction {reduction}")
+            print(f"\nTest reduction {reduction}...")
 
         # Check the data list
         error_msg = "This test is only meaningful for a data list with at "
@@ -729,7 +832,7 @@ class HessianFree(torch.optim.Optimizer):
         assert len(datalist) > 1, error_msg
 
         # Sample random vector for testing the matrix-vector product
-        x = torch.rand(parameters_to_vector(self._params_list).shape)
+        x = torch.randn_like(parameters_to_vector(self._params_list))
         x = x.to(self.device)
 
         # ----------------------------------------------------------------------
@@ -785,20 +888,35 @@ class HessianFree(torch.optim.Optimizer):
         # Tests: Compare both approaches
         # ----------------------------------------------------------------------
 
-        error_msg = f"Inconsistent results for reduction = {reduction}"
+        tests_passed = True
 
-        # Test Loss
-        assert torch.allclose(acc_loss, ref_loss), error_msg
+        # Check loss values
         if self.verbose:
-            print("  Loss: Test passed")
+            print("  Test loss values")
+        if not torch.allclose(acc_loss, ref_loss):
+            if self.verbose:
+                print("  Loss values differ")
+            tests_passed = False
 
-        # Test gradient
-        assert torch.allclose(acc_grad, ref_grad), error_msg
+        # Check gradients
         if self.verbose:
-            print("  Gradient: Test passed")
+            print("  Test gradients")
+        if not torch.allclose(acc_grad, ref_grad):
+            if self.verbose:
+                print("  Gradients differ")
+            tests_passed = False
 
-        # Test matrix-vector products
-        assert torch.allclose(acc_mvp, ref_mvp), error_msg
+        # Check matrix-vector products
         if self.verbose:
-            print("  Matrix-vector product: Test passed")
-            print("  All tests passed")
+            print("  Test matrix-vector products")
+        if not torch.allclose(acc_mvp, ref_mvp):
+            if self.verbose:
+                print("  Matrix-vector products differ")
+            tests_passed = False
+
+        if not tests_passed:
+            error_msg = f"Inconsistent results for reduction {reduction}"
+            raise RuntimeError(error_msg)
+        else:
+            if self.verbose:
+                print("  All tests passed")
