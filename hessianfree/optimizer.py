@@ -751,13 +751,6 @@ class HessianFree(torch.optim.Optimizer):
         acc_grad = self._acc_grad(
             losses_list, N_list, reduction, create_graph=True
         )
-
-        print("losses_list = ", losses_list)
-        print("outputs_list = ", outputs_list)
-        print("N_list = ", N_list)
-        print("curvature_opt = ", curvature_opt)
-        print("reduction = ", reduction)
-        print("x = ", x)
         acc_mvp = self._acc_mvp(
             losses_list, outputs_list, N_list, curvature_opt, reduction, x
         )
