@@ -16,15 +16,19 @@ def get_linear_system(dim, seed=0, device="cpu"):
     return A.to(device), b.to(device), x.to(device)
 
 
-def get_small_nn_testproblem(N=16, freeze_first_layer=False, device="cpu"):
-    """Set-up test problem. Return the model, data and loss function."""
+def get_small_nn_testproblem(
+    N=16,
+    freeze_first_layer=True,
+    device="cpu",
+):
+    """Set-up test problem: The model (a small neural network), data and loss-
+    function.
+    """
 
-    D_out = 3
-    D_hidden = 5
+    # In- and output dimensions
     D_in = 7
-
-    X = torch.rand(N, D_in)
-    y = torch.rand(N, D_out)
+    D_hidden = 5
+    D_out = 3
 
     model = torch.nn.Sequential(
         torch.nn.Linear(D_in, D_hidden),
@@ -34,7 +38,7 @@ def get_small_nn_testproblem(N=16, freeze_first_layer=False, device="cpu"):
             torch.nn.ReLU(),
         ),
         torch.nn.Linear(D_hidden, D_out),
-    )
+    ).to(device)
 
     # Freeze parameters of first layer --> some parameters not trainable
     if freeze_first_layer:
@@ -42,9 +46,14 @@ def get_small_nn_testproblem(N=16, freeze_first_layer=False, device="cpu"):
         for param in first_layer.parameters():
             param.requires_grad = False
 
+    # Dummy data
+    inputs = torch.rand(N, D_in).to(device)
+    targets = torch.rand(N, D_out).to(device)
+
+    # Loss-function
     loss_function = torch.nn.MSELoss(reduction="mean")
 
-    return model.to(device), (X.to(device), y.to(device)), loss_function
+    return model, (inputs, targets), loss_function
 
 
 class TargetFuncModel:
@@ -59,5 +68,4 @@ class TargetFuncModel:
         return self.params
 
     def eval_loss(self):
-        p = self.params
-        return self.target_func(p)
+        return self.target_func(self.params)

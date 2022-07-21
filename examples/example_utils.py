@@ -67,3 +67,18 @@ def get_cifar100_testproblem(batch_size=32, device="cpu"):
         return loss + l2_loss
 
     return model.to(device), train_loader, loss_function
+
+
+class TargetFuncModel:
+    """Set up a "model" that holds a target function and some parameters."""
+
+    def __init__(self, target_func, init_params):
+        self.target_func = target_func
+        self.init_params = init_params
+        self.params = init_params.clone().detach().requires_grad_(True)
+
+    def parameters(self):
+        return self.params
+
+    def eval_loss(self):
+        return self.target_func(self.params)
