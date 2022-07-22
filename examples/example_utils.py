@@ -1,3 +1,7 @@
+"""This file contains functions for setting up example problems (models, data,
+loss-functions).
+"""
+
 import torch
 from deepobs.pytorch.runners.runner import PTRunner
 

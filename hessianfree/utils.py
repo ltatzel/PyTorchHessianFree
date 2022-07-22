@@ -1,3 +1,5 @@
+"""Functions for converting a vector to a model's parameters."""
+
 from warnings import warn
 
 import torch
