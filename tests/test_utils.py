@@ -1,4 +1,4 @@
-"""This file contains some auxiliary functions."""
+"""This file contains some shared auxiliary functions."""
 
 import torch
 

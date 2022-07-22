@@ -6,6 +6,8 @@ import torch
 def cg_backtracking(f, steps_list, verbose=False):
     """Evaluate the target function `f` for all update steps in `steps_list`.
     Return the minimum target function value and the corresonding list index.
+    For this approach, we have to evaluate the target function for all
+    candidates in `steps_list`, which might be costly.
 
     Args:
         f (callable): Target function: Maps a step `step` to the corresonding
@@ -53,7 +55,8 @@ def cg_efficient_backtracking(f, steps_list, verbose=False):
     `steps_list`. We start with the last item in `steps_list` and keep
     evaluating the target function as long as there is an improvement in `f`.
     Return the minimum observed (!) target function value and the corresonding
-    list index.
+    list index - this is not necessarily the optimal step in `steps_list`. This
+    approach is described in [1, Section 4.6].
 
     Args:
         f (callable): Target function: Maps a step `step` to the corresonding

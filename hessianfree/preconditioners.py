@@ -12,12 +12,14 @@ def diag_EF_backpack(model, loss_function, inputs, targets, reduction):
     """Compute the diagonal of the empirical Fisher matrix using BackPACK. This
     diagonal is the (scaled) sum of the squared gradients and can therefore be
     computed using BackPACK's `SumGradSquared()` extension (see
-    https://docs.backpack.pt/en/master/extensions.html). Let `f_i` be the loss
-    of the i-th sample, with gradient `g_i`. This function will return
-    - `g_1^2 + ... + g_N^2` if `reduction == "sum"`,
-    - `(1/N) * (g_1^2 + ... + g_N^2)` if `reduction == "mean"`
+    https://docs.backpack.pt/en/master/extensions.html).
 
-    Note: This function is less flexible than `diag_EF_autograd` (e.g. it dows
+    Let `f_i` be the loss of the i-th sample, with gradient `g_i`. This function
+    will return
+    - `g_1^2 + ... + g_N^2` if `reduction == "sum"`,
+    - `(1/N) * (g_1^2 + ... + g_N^2)` if `reduction == "mean"`.
+
+    Note: This function is less flexible than `diag_EF_autograd` (e.g. it does
     not support L2-regularized losses), but faster. If the BackPACK-version is
     applicable, it should be preferred.
 
@@ -27,6 +29,7 @@ def diag_EF_backpack(model, loss_function, inputs, targets, reduction):
             `(outputs, targets)` to the loss value.
         inputs, targets (torch.Tensor): The inputs and targets for computing
             the network's output and respective loss.
+        reduction (str): Either `"sum"` or `"mean"`, see description above.
 
     Returns:
         The diagonal of the empirical Fisher matrix as vector. Its length
@@ -59,10 +62,12 @@ def diag_EF_backpack(model, loss_function, inputs, targets, reduction):
 
 def diag_EF_autograd(model, loss_function, inputs, targets, reduction):
     """Compute the diagonal of the empirical Fisher matrix using autograd. This
-    diagonal is the (scaled) sum of the squared gradients. Let `f_i` be the loss
-    of the i-th sample, with gradient `g_i`. This function will return
+    diagonal is the (scaled) sum of the squared gradients.
+
+    Let `f_i` be the loss of the i-th sample, with gradient `g_i`. This function
+    will return
     - `g_1^2 + ... + g_N^2` if `reduction == "sum"`,
-    - `(1/N) * (g_1^2 + ... + g_N^2)` if `reduction == "mean"`
+    - `(1/N) * (g_1^2 + ... + g_N^2)` if `reduction == "mean"`.
 
     Note: This function is more flexible than `diag_EF_backpack`, but slower. If
     the BackPACK-version is applicable, it should be preferred.
@@ -73,7 +78,7 @@ def diag_EF_autograd(model, loss_function, inputs, targets, reduction):
             `(outputs, targets)` to the loss value.
         inputs, targets (torch.Tensor): The inputs and targets for computing
             the network's output and respective loss.
-        reduction (str): Either `"mean"` or `"sum"`, see description above.
+        reduction (str): Either `"sum"` or `"mean"`, see description above.
 
     Returns:
         The diagonal of the empirical Fisher matrix as vector. Its length
@@ -152,57 +157,3 @@ def diag_EF_preconditioner(
     else:
         M_func = diag_to_preconditioner(diag_EF, damping, exponent)
     return M_func
-
-
-if __name__ == "__main__":
-
-    torch.manual_seed(0)
-
-    print(f"\nRunning on DEVICE = {DEVICE}")
-
-    # Batch size
-    N = 3
-
-    # Parameters of the network
-    D_in = 2
-    D_hidden = 3
-    D_out = 2
-
-    # Data
-    inputs = torch.rand(N, D_in).to(DEVICE)
-    targets = torch.rand(N, D_out).to(DEVICE)
-
-    # Model
-    model = torch.nn.Sequential(
-        torch.nn.Linear(D_in, D_hidden),
-        torch.nn.ReLU(),
-        torch.nn.Sequential(
-            torch.nn.Linear(D_hidden, D_hidden),
-            torch.nn.ReLU(),
-        ),
-        torch.nn.Linear(D_hidden, D_out),
-    ).to(DEVICE)
-
-    # Loss-function
-    reduction = "mean"
-    loss_function = torch.nn.MSELoss(reduction=reduction)
-
-    # Diagonal of the empirical Fisher matrix using BackPACK
-    diag_EF_bp = diag_EF_backpack(
-        model, loss_function, inputs, targets, reduction=reduction
-    )
-    print("\ndiag_EF_bp[:10] = ", diag_EF_bp[:10])
-
-    # ... and using autograd
-    diag_EF_ag = diag_EF_autograd(
-        model, loss_function, inputs, targets, reduction=reduction
-    )
-    print("\ndiag_EF_ag[:10] = ", diag_EF_ag[:10])
-
-    # Build preconditioner, apply to random vector
-    damping = 0.1
-    exponent = 0.75
-    M_func = diag_to_preconditioner(diag_EF_bp, damping, exponent)
-    rand_vec = torch.rand(diag_EF_bp.numel())
-    Mvec = M_func(rand_vec)
-    print("\nMvec[:10] = ", Mvec[:10])

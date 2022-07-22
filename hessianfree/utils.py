@@ -9,8 +9,16 @@ def vector_to_trainparams(vec, parameters):
     """Similar to `vector_to_parameters` from `torch.nn.utils`: Replace the
     parameters with the entries of `vec`. But here, the vector `vec` only
     contains the parameter values for the trainable parameters, i.e. those
-    parameters with `requires_grad == True`. Finally, this function raises a
-    warning in case not all entries of `vec` have been used.
+    parameters with `requires_grad == True`.
+
+    Args:
+        vec (torch.Tensor): The vector representing the trainable parameters.
+        parameters (iterable): An iterable of `torch.Tensor`s containing the
+            parameters (including non-trainable ones).
+
+    Raises:
+        Warning, if not all entries of `vec` have been used to fill the
+            `parameters`.
     """
 
     if not isinstance(vec, torch.Tensor):
@@ -35,8 +43,16 @@ def vector_to_parameter_list(vec, parameters):
     `parameters`. This function is the inverse of `parameters_to_vector` from
     `torch.nn.utils`. In contrast to `vector_to_parameters`, which replaces the
     value of the parameters, this function leaves the parameters unchanged and
-    returns a list of parameter views of the vector. This function raises a
-    warning if not all entries of `vec` are converted.
+    returns a list of parameter views of the vector.
+
+    Args:
+        vec (torch.Tensor): The vector representing the parameters. This vector
+            is converted to a parameter-list format matching `parameters`.
+        parameters (iterable): An iterable of `torch.Tensor`s containing the
+            parameters. These parameters are not changed by the function.
+
+    Raises:
+        Warning if not all entries of `vec` are converted.
     """
 
     if not isinstance(vec, torch.Tensor):

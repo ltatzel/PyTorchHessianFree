@@ -18,44 +18,47 @@ def cg(
     store_x_at_iters=[],
     verbose=False,
 ):
-    """This method implements the preconditioned conjugate gradient
-    algorithm for minimizing the quadratic `0.5 x^T A x - b^T x`, with s.p.d.
-    matrix `A`. Note that the minimizer of this quadratic is given by the
-    solution of the linear system `A x = b`. This implementation is based on
-    Algorithm 2 in Martens' report [2] with `M` denoting the inverse of `P`. It
-    is the well-known preconditioned cg-algorithm with some modifications
-    specifically designed for the context of Hessian-free optimization.
+    """This method implements the preconditioned conjugate gradient algorithm
+    for minimizing the quadratic `0.5 x^T A x - b^T x`, with s.p.d. matrix `A`.
+    Note that the minimizer of this quadratic is given by the solution of the
+    linear system `A x = b`. This implementation is based on Algorithm 2 in
+    Martens' report [2] with `M` denoting the inverse of `P`. It is the well-
+    known preconditioned cg-algorithm with some modifications specifically
+    designed for the context of Hessian-free optimization.
 
     Args:
         A (callable): Function implementing matrix-vector multiplication with
             the symmetric, positive definite matrix `A`.
         b (torch.Tensor): Right-hand side of the linear system `b`.
-        x0 (torch.Tensor): An initial guess for the solution of the linear
-            system.
-        M (callable, optional): Function implementing matrix-vector
+        x0 (torch.Tensor or None): An initial guess for the solution of the
+            linear system. If `None`, the zero-vector is used.
+        M (callable or None): Function implementing matrix-vector
             multiplication with the preconditioning matrix. This is supposed to
-            approximate the inverse of `A`. If `M == None` (default), no
+            approximate the inverse of `A`. If `M is None` (default), no
             preconditioning is applied.
-        max_iter (int, optional): Terminate cg after `max_iter` iterations. If
+        max_iter (int or None): Terminate cg after `max_iter` iterations. If
             not specified (`None`), the dimension of the linear system is used.
-        tol, atol (float, optional): Terminate cg if
+        tol, atol (float, float or None): Terminate cg if
             `norm(residual) <= max(tol * norm(b), atol)`.
         martens_conv_crit (bool): If `True`, use Martens convergence criterion
-            in addition to the tolerance-based citerion.
+            (measuring the relative progress) in addition to the tolerance-based
+            citerion.
         store_x_at_iters (list or None): Store the cg-approximations for `x` in
             `x_iters` only in the iterations in `store_x_at_iters`. The final
             solution is always stored, even if `store_x_at_iters` is an empty
-            list (the default). If `None` is given, an automatic grid is
-            created.
+            list `[]` (the default). If `None` is given, an automatic grid is
+            created, see `_cg_storing_grid` below.
         verbose (bool): If `True`, print out information.
 
     Returns:
         A tuple containing
         x_iters (list): List of approximative solutions to the linear system for
             the cg-iterations in `store_x_at_iters`. The other entries are
-            `None`. The final solution for `x` is always stored.
+            `None`. The final solution for `x` is always stored at
+            `x_iters[-1]`.
         m_iters (list): If `martens_conv_crit == True`, this list contains the
             values of the quadratic `0.5 x^T A x - b^T x` for all cg-iterations.
+            Otherwise, it is `None`.
     """
 
     if verbose:
@@ -72,8 +75,8 @@ def cg(
         print(f"Residual norm required for termination: {res_bound:.6e}")
 
     def _terminate_cg(r, x, m_iters, iter):
-        """This function implements the termination conditions. We terminate cg
-        if
+        """This function implements the termination conditions and fills
+        `m_iters`. We terminate cg if
         - Martens' convergence criterion is fulfilled
         - `max_iter` iterations have been performed
         - the residual norm diverged

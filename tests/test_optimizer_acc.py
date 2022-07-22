@@ -3,9 +3,11 @@ method.
 """
 
 from copy import deepcopy
+
+import pytest
 import torch
 from hessianfree.optimizer import HessianFree
-import pytest
+
 from test_utils import get_small_nn_testproblem
 
 
