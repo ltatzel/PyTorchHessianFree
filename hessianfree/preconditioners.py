@@ -1,4 +1,4 @@
-"""Implementation of preconditioners for cg."""
+"""Implementation of preconditioners for cg as described in [1, Section 4.7]."""
 
 import torch
 from backpack import backpack, extend

@@ -41,8 +41,8 @@ def cg(
         tol, atol (float, float or None): Terminate cg if
             `norm(residual) <= max(tol * norm(b), atol)`.
         martens_conv_crit (bool): If `True`, use Martens convergence criterion
-            (measuring the relative progress) in addition to the tolerance-based
-            citerion.
+            (measuring the relative progress, see [1, Section 4.4]) in addition
+            to the tolerance-based citerion.
         store_x_at_iters (list or None): Store the cg-approximations for `x` in
             `x_iters` only in the iterations in `store_x_at_iters`. The final
             solution is always stored, even if `store_x_at_iters` is an empty
@@ -96,7 +96,7 @@ def cg(
             if k < iter:
                 s_numerator = m_iters[iter] - m_iters[iter - k]
                 s_denominator = m_iters[iter] - m_iters[0]
-                if s_numerator / s_denominator < 1e-4:
+                if s_numerator / s_denominator < 5e-4:
                     return True, "Convergence (Martens)"
 
         # Terminate if `max_iters` iterations have been perfromed

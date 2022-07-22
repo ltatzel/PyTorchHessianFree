@@ -57,13 +57,15 @@ class HessianFree(torch.optim.Optimizer):
             cg_max_iter (int or None): The maximum number of cg-iterations. The
                 default value is taken from [2, Section 8.7]. If `None` is
                 given, the dimension of the linear system is used.
-            cg_decay_x0 (float): As suggested in [2, Section 10], the cg-method
-                is initialized with the cg-"solution" from the last step
-                multiplied by this `cg_decay_x0` scalar constant.
+            cg_decay_x0 (float): As suggested in [1, Section 4.5], the cg-method
+                is initialized with the cg-"solution" from the last step. [2,
+                Section 10] suggests multiplying this by a scalar constant
+                `cg_decay_x0`.
             use_cg_backtracking (bool): If `True`, cg will return not only the
                 final "solution" to the linear system but also intermediate
                 "solutions" for a subset of the iterations. The set of potential
-                update steps is later searched for an "ideal" candidate.
+                update steps is later searched for an "ideal" candidate. This
+                approach is described in [1, Section 4.6].
             lr (float): The learning rate. The update step is scaled by this
                 scalar. If `use_linesearch` is `True`, it is used as the initial
                 candidate.
@@ -254,7 +256,8 @@ class HessianFree(torch.optim.Optimizer):
         )
         step_vec = x_iters[-1]
 
-        # Initialize the next cg-run with the decayed current solution
+        # Initialize the next cg-run with the decayed current solution (not the
+        # "backtracked" one, see [1, Section 4.6]).
         self._set_x0(self.cg_decay_x0 * x_iters[-1])
 
         # ----------------------------------------------------------------------
