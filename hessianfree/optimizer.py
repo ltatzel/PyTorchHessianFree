@@ -15,7 +15,9 @@ from hessianfree.utils import vector_to_parameter_list, vector_to_trainparams
 
 
 class HessianFree(torch.optim.Optimizer):
-    """TODO"""
+    """This class implements the Hessian-free optimizer as described in [1] and
+    [2] in Pytorch.
+    """
 
     def __init__(
         self,
@@ -30,19 +32,45 @@ class HessianFree(torch.optim.Optimizer):
         use_linesearch=True,
         verbose=False,
     ):
-        """TODO
+        """The constructor creates an instance of the `HessianFree` optimizer.
 
         Args:
-            cg_max_iter (int, optional): The maximum number of cg-iterations.
-                The default value `250` is taken from the report [1, p. 36]. If
-                `None` is used, this parameter is set to the dimension of the
-                linear system.
-            lr (float, optional): If `use_linesearch == False`, use the constant
-                learning rate, otherwise use it as initial scaling for the line
-                search.
-            damping (float, optional): Tikhonov damping: If `0.0`, it won't get
-                adapted
-            cg_decay_x0: From [2, Section 10]
+            params (iterable): An iterable of `torch.Tensor`s that represents
+                the parameters that are to be optimized. So far, only one
+                parameter group is supported.
+            curvature_opt (str): The `HessianFree` optimizer uses a local
+                quadratic model of the loss landscape (and minimizes this
+                quadratic with the cg-method). This model requires curvature
+                information, which, in our implementation, is either the Hessian
+                matrix (`curvature_opt == "hessian"`) or the generalized Gauss-
+                Newton matrix (`curvature_opt == "ggn"`). As recommended in [1,
+                Section 4.2] and [2, e.g. p. 10], the default is the symmetric
+                positive semidefinite GGN.
+            damping (float): The optimizer uses Tikhonov damping (see [1,
+                Section 4.1]), i.e. a scalar multiple of the identity matrix is
+                added to the curvature matrix when the cg-method is applied.
+                This damping parameter is kept constant only if `adapt_damping`
+                is `False`, otherwise it may be modified.
+            adapt_damping (bool): If `adapt_damping` is `True`, the proposed
+                damping parameter `damping` is adapted according to a
+                Levenberg-Marquardt style heuristic, see [1, Section 4.1].
+            cg_max_iter (int or None): The maximum number of cg-iterations. The
+                default value is taken from [2, Section 8.7]. If `None` is
+                given, the dimension of the linear system is used.
+            cg_decay_x0 (float): As suggested in [2, Section 10], the cg-method
+                is initialized with the cg-"solution" from the last step
+                multiplied by this `cg_decay_x0` scalar constant.
+            use_cg_backtracking (bool): If `True`, cg will return not only the
+                final "solution" to the linear system but also intermediate
+                "solutions" for a subset of the iterations. The set of potential
+                update steps is later searched for an "ideal" candidate.
+            lr (float): The learning rate. The update step is scaled by this
+                scalar. If `use_linesearch` is `True`, it is used as the initial
+                candidate.
+            use_linesearch (bool): If `use_linesearch` is `True`, the update
+                step is iteratively scaled back until a "sufficient" improvement
+                (Armijo condition) in the loss value is achieved.
+            verbose (bool): Print information during the computations.
         """
 
         # Curvature option
@@ -100,20 +128,52 @@ class HessianFree(torch.optim.Optimizer):
         M_func=None,
         test_deterministic=False,
     ):
-        """TODO
+        """Perform a parameter update step.
 
-        forward: Used for everything after cg. Returns a loss-outputs-tuple
-            (outputs can be `None`, but then `curvature_opt` cannot be `"ggn"`).
-            You may want to check that the model is in eval mode. The returned
-            loss has to be a torch.Tensor
-        grad: The gradient of the loss function. It is used as right hand side
-            in cg and in the line search. If not given, this is coputed based on
-            `forward`.
-            You may want to check that the model is in eval mode.
-        mvp: Matrix vector product used in cg.
-            You may want to check that the model is in eval mode.
-        M_func: M is supposed to approximate the inverse of `A`, i.e. the
-            inverse of the damped (!) curvature matrix.
+        Args:
+            forward (callable): This function returns a `(loss, outputs)`-tuple,
+                where `loss` is the target function value. Here is a pseudo-code
+                example of the training loop:
+                ```
+                for step_idx in range(num_steps):
+
+                    inputs, targets = get_minibatch_data()
+
+                    def forward():
+                        outputs = model(inputs)
+                        loss = loss_function(outputs, targets)
+                        return loss, outputs
+
+                    opt.step(forward=forward)
+                ```
+                The `outputs` value is needed only when the GGN is used as the
+                curvature matrix. If `curvature_opt == "hessian"`, the return
+                value for `outputs` can be set to `None`.
+            grad (torch.Tensor or None): The gradient of the loss with respect
+                to the trainable parameters. If this is `None`, it will be
+                computed from the `forward` function. This gradient is used as
+                a right-hand side in the cg-method and in the Armijo condition
+                in the line search.
+            mvp (callable or None): This function represents the matrix-vector
+                product with the curvature matrix, i.e. it maps a vector `x` to
+                `B * x`, where `B` is a curvature matrix with respect to the
+                trainable parameters. If this `mvp` is `None`, it is computed
+                from the `forward` function.
+            M_func (callable or None): This function represents the matrix-
+                vector product with a preconditioner matrix. This is supposed to
+                approximate multiplication with the inverse of `A` (in cg), i.e.
+                the inverse of the damped (!) curvature matrix. The method
+                `get_preconditioner` sets up such a function.
+            test_deterministic (bool): If this is set to `True`, it is checked
+                wheter two independent computations of the loss and the
+                matrix-vector product (applied to a random vector), yield the
+                same result. This is important because if the model has "random"
+                components (e.g. uses `torch.nn.Dropout`), this will lead to
+                "inconsistent" matrix-vector products in cg implying "changing"
+                quadratic models which might lead to unpredictable behaviour. It
+                is recommended to at least perform this test (which slightly
+                increases the computational costs of the step) at least once
+                (e.g. in the very first step).
         """
 
         # Set state
@@ -177,6 +237,10 @@ class HessianFree(torch.optim.Optimizer):
         damping = self._group["damping"]
         cg_max_iter = self._group["cg_max_iter"]
 
+        # Only store the initial and final solution (i.e. use `[0]`); if cg-
+        # backtracking is used, create an automated grid of iterations (`None`).
+        store_x_at_iters = None if self.use_cg_backtracking else [0]
+
         # Apply cg
         x_iters, m_iters = cg(
             A=lambda x: mvp(x) + damping * x,  # Add damping
@@ -185,7 +249,7 @@ class HessianFree(torch.optim.Optimizer):
             M=M_func,
             max_iter=cg_max_iter,
             martens_conv_crit=True,
-            store_x_at_iters=None,  # Use automatic grid
+            store_x_at_iters=store_x_at_iters,
             verbose=self.verbose,
         )
         step_vec = x_iters[-1]
@@ -372,14 +436,15 @@ class HessianFree(torch.optim.Optimizer):
         update step) and the improvement predicted by the quadratic model. Note
         that this method changes the `self._group["damping"]` attribute.
 
-        If a negative reduction ratio is detected, we raise a warning.
-
         Args:
             f_0, f_step: The target function value at `0` (no update step, i.e.
                 at the initial parameters) and at `step` (i.e. when applying the
                 full update step).
             m_0, m_step: The value of the quadratic model used by cg at `0` (no
                 update step) and at `step`.
+
+        Raises:
+            Warning if a negative reduction ratio is detected.
         """
 
         # Compute reduction ratio `rho`
@@ -431,9 +496,14 @@ class HessianFree(torch.optim.Optimizer):
     ):
         """Perform an optimization step, where the loss-values (used e.g. in
         the line search), gradient and curvature are each evaluated over a list
-        of mini-batches. These lists may differ. In this regard, this method is
-        more flexible than `step` and its "iterative" computations allow to use
-        very large batch sizes.
+        of mini-batches. These lists may differ! In this regard, this method is
+        more flexible than `step` and its "iterative" computations (the results
+        are accumulated over the chunks of data) allow to use very large batch
+        sizes.
+
+        It is balically a wrapper for `step` that creates the `forward`-
+        function, the gradient and the `mvp`-function automatically based on the
+        `model`, `loss_func` and data.
 
         Args:
             model (torch.nn.Module): The neural network mapping the `inputs`
@@ -441,20 +511,26 @@ class HessianFree(torch.optim.Optimizer):
             loss_func (torch.nn.Module): The loss function mapping the tuple
                 `(outputs, targets)` to the loss value.
             forward_datalist (list): A list of `(inputs, targets)`-tuples used
-                by the `forward` function (that evaluates the loss).
+                by the `forward` function (that evaluates the loss). `inputs`
+                and `targets` are `torch.Tensor`s.
             grad_datalist (list or None): A list of `(inputs, targets)`-tuples
-                used for the computation of the gradient.
+                used for the computation of the gradient. If this is `None` (the
+                default), the `forward_datalist` is used.
             mvp_datalist (list or None): A list of `(inputs, targets)`-tuples
-                used for the computation of the matrix-vector products.
+                used for the computation of the matrix-vector products. If this
+                is `None` (the default), the `forward_datalist` is used.
             M_func (callable or None): The preconditioner for cg. This is
                 supposed to be an approximation of the inverse of the damped (!)
-                curvature matrix.
+                curvature matrix, see the `step`-method for details.
             reduction (str): The reduction method used by the loss function. Let
                 the individual per-sample loss contributions be denoted by l_i.
                 If the loss_function is a sum over these contributions, use
                 `"sum"`; if it is an average, i.e. (1/N) * (l_1 + ... + l_N),
-                use `"mean"`. To make sure, you can test the reduction with the
-                `test_reduction`-method.
+                use `"mean"`. To make sure, it is recommended to test the
+                reduction with the `test_reduction`-method.
+            test_deterministic (bool): Test whether the loss and the `mvp`
+                function yield deterministic results, see the `step`-method for
+                details.
         """
 
         # If not given, set the data lists to `forward_datalist`
@@ -796,8 +872,8 @@ class HessianFree(torch.optim.Optimizer):
                 use `"sum"`; if it is an average, i.e. `(1/N) * (l_1 + ... +
                 l_N)`, use `"mean"`.
 
-        This function will raise an exeption if the loss-function and the
-        reduction do not match.
+        Raises:
+            Exeption if the loss-function and the reduction do not match.
         """
 
         if self.verbose:
