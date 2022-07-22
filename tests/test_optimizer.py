@@ -49,15 +49,9 @@ def test_on_neural_network(
 
     # Create test problem
     torch.manual_seed(seed)
-    model, data, loss_function = get_small_nn_testproblem(
+    model, _, loss_function = get_small_nn_testproblem(
         freeze_first_layer=True, device=device
     )
-    inputs, targets = data
-
-    def forward():
-        outputs = model(inputs)
-        loss = loss_function(outputs, targets)
-        return loss, outputs
 
     # Set up optimizer
     damping = 1.5 if curvature_opt == "hessian" else 0.1
@@ -70,6 +64,14 @@ def test_on_neural_network(
 
     # Perform some update steps
     for step_idx in range(3):
+
+        # Sample new data, define `forward` function
+        _, (inputs, targets), _ = get_small_nn_testproblem(device=device)
+
+        def forward():
+            outputs = model(inputs)
+            loss = loss_function(outputs, targets)
+            return loss, outputs
 
         # Use preconditioning?
         if preconditioning:
