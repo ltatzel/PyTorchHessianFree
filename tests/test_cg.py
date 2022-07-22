@@ -38,8 +38,8 @@ EPS = 5e-7
 @pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
 def test_cg_residuals(seed, dim, tol, atol, preconditioning, device):
-    """Apply cg (without preconditioning) to a randomly chosen linear system
-    until convergence. Check that the residual is within the specified
+    """Apply cg (with and without preconditioning) to a randomly chosen linear
+    system until convergence. Check that the residual is within the specified
     tolerances.
     """
 
@@ -101,9 +101,9 @@ X0_NONE_IDS = [f"x0 is None? {x:e}" for x in X0_NONE]
 @pytest.mark.parametrize("preconditioning", PRECON, ids=PRECON_IDS)
 @pytest.mark.parametrize("device", DEVICES, ids=DEVICES_IDS)
 def test_cg_m_iters(seed, dim, x0_none, preconditioning, device):
-    """Apply cg (without preconditioning) to a randomly chosen linear system.
-    The output `m_iters` has to correspond to evaluations of the quadratic
-    `0.5 x^T A x - b^T x`.
+    """Apply cg (with and without preconditioning) to a randomly chosen linear
+    system. The output `m_iters` has to correspond to evaluations of the
+    quadratic `0.5 x^T A x - b^T x`.
     """
 
     msg = f"seed={seed}, dim={dim}, x0_none={x0_none}, "
@@ -163,16 +163,20 @@ def test_pcg(seed, dim, device):
     """Test the preconditioned cg-method. We use three preconditioners: `None`,
     the identity matrix and the inverse of the system matrix `A` of the linear
     system. We make sure that the first two cases yield the same result and that
-    the third case converges in not more than 2 iterations (theoretically, it
-    should be one, but for large `dim`, an additional iteration seems to be
-    needed to achieve convergence).
+    the third case converges in a single iteration (for this to hold, it is
+    necessary to increase the precision of the tensors to `torch.double`).
     """
 
     msg = f"seed={seed}, dim={dim}, device={device}"
     print("\n===== RUN `test_pcg` =====\nwith " + msg)
 
-    # Define problem, compute inverse
+    # Define problem
     A, b, x_exact = get_linear_system(dim, seed=seed, device=device)
+
+    # increase precision of subsequent computations
+    b = b.to(torch.double).to(device)
+    A = A.to(torch.double).to(device)
+
     A_inv = torch.linalg.inv(A)
 
     def A_func(x):
@@ -213,9 +217,11 @@ def test_pcg(seed, dim, device):
     for x_1, x_2 in zip(x_none, x_identity):
         assert torch.equal(x_1, x_2), error_msg
 
-    error_msg = "`A_inverse` needs more then 2 iterations."
+    # Check number of iterations
     num_iterations = len(x_A_inverse) - 1  # `x0` is the first entry
-    assert num_iterations <= 2, error_msg
+    print("num_iterations = ", num_iterations)
+    error_msg = "`A_inverse` needs more then 1 iteration."
+    assert num_iterations <= 1, error_msg
 
 
 if __name__ == "__main__":
