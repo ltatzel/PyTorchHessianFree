@@ -8,14 +8,17 @@ products with the Hessian or GGN, we use functionality from the BackPACK
 [package](https://backpack.pt/) [3].
 
 
-### Installation instructions
+## Installation instructions
 
 If you want to use the optimizer, you can download it from GitHub via `git clone
-https://github.com/ltatzel/PyTorchHessianFree.git` and install it with `pip
-install -e PyTorchHessianFree`. 
+https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the
+project folder `cd PyTorchHessianFree` and install it with `pip install -e .`.
+Additional requirements for the tests and examples can be installed via `pip
+install -e ".[tests]"` and `pip install -e ".[examples]"` respectively. For
+running the tests, execute `pytest` from the repo's root directory.
 
 
-### MWE
+## Example
 
 ```python:
 """A minimal working example using the `HessianFree` optimizer on a small neural
@@ -57,42 +60,88 @@ if __name__ == "__main__":
 ```
 
 
-### Structure of this repo
+## Structure of this repo
 
 The repo contains three folders:
-- `examples`: This folder contains a few **basic examples** demonstrating how to
-use the optimizer for training neural networks and optimizing deterministic
-functions (e.g. the Rosenbrock function). 
 - `hessianfree`: This folder contains all the optimizer's components (e.g. the
   line search, the cg-method and preconditioners). The **Hessian-free
-  optimizer** is implemented in the `optimizer.py` file.
+  optimizer** itself is implemented in the `optimizer.py` file.
 - `tests`: Here, we **test** functionality implemented in `hessianfree`. 
+- `examples`: This folder contains a few **basic examples** demonstrating how to
+use the optimizer for training neural networks (using the `step` and `acc_step`
+method) and optimizing deterministic functions (e.g. the Rosenbrock function). 
 
 
-### Implementation Details
+## Contributing
+
+I would be very grateful for any feedback! If you have questions, a feature request, found a bug or have comments on how to improve the code, please don't hesitate to reach out to me.
+
+
+## Implementation Details
 
 - **Hessian & GGN:** Our implementation allows using either the Hessian matrix
-or the GGN via the argument `curvature_opt` to the optimizer's constructor. We
-chose the GGN as the default as it *tends to work much better than the Hessian
-in practice* [2, p. 10]. For the matrix-vector products with these matrices, we
-use functionality from the BackPACK package [3].
+  or the GGN as curvature matrix via the argument `curvature_opt` to the
+  optimizer's constructor. As recommended in [1, Section 4.2] and [2, e.g. p.
+  10], the default is the symmetric positive semidefinite GGN. For the
+  matrix-vector products with these matrices, we use functionality from the
+  BackPACK package [3].
+
+- **Damping:** As described in [1, Section 4.1], Tikhonov-damping can be used to
+  avoid overly large steps. Our implementation also features the
+  Levenberg-Marquardt style heuristic for adjusting the damping parameter - it
+  can be turned on and off via the `adapt_damping` switch.
+
 - **PCG:** Our implementation of the preconditioned conjugate gradient method
   features the termination criterion presented in [1, Section 4.4] via the
-  argument `martens_conv_crit`. It also offers ways to deal with non-positive
-directional curvature $p_i^\top A p_i \leq 0$ (note that this is a violation of
-the assumption that $A$ is positive definite) via the
-`nonpos_curv_option`-argument to the function `postprocess_pAp`. For example, it
-allows using the absolute value of the directional curvature - this idea is
-discussed in detail in [4].
-- TODO: Mention all sub-section in [1, Section 4], mention `step` and `step_acc`
+  argument `martens_conv_crit`. 
+  
+  It also offers ways to deal with non-positive directional curvature $p_i^\top
+  A p_i \leq 0$ (note that this is a violation of the assumption that $A$ is
+  positive definite) via the `nonpos_curv_option`-argument to the
+  `postprocess_pAp` function. For example, it allows using the absolute value of
+  the directional curvature - this idea is discussed in detail in [4]. 
+  
+  As suggested in [1, Section 4.5], we use the cg- "solution" from the last step
+  as a starting point for the next one. Via the argument `cg_decay_x0` to the
+  optimizer's constructor, this initial search direction can be scaled by a
+  constant. The default is `0.95` as in [2, Section 10].
+
+  The `get_preconditioner`-method implements the preconditioner suggested in [1,
+  Section 4.7]: The diagonal of the empirical Fisher matrix. 
+
+- **CG-backtracking & line search:** When cg-backtracking is used, the
+  `cg`-method will return not only the final "solution" to the linear system but
+  also intermediate "solutions" for a subset of the iterations. This grid of
+  iterations is generated using the approach from [1, Section 4.6]. In a
+  subsequent step, the set of potential update steps is searched for an "ideal"
+  candidate. 
+  
+  Next, this update step is iteratively scaled back by the line search until the
+  target function is decreased "significantly" (Armijo condition). This approach
+  is described in [2, Section 8.8]. 
+  
+  Both these modules are optional and can be turned on and off via the switches
+  `use_cg_backtracking` and `use_linesearch`.
+
+- **Computing parameter updates:** Our Hessian-free optimizer offers two methods
+  for computing parameter updates: `step` and `acc_step`. 
+
+  The former one, which is also used in the example above, only has one required
+  argument: the `forward`-function. This represents the target function and all
+  relevant quantities needed by the optimizer (e.g. the gradient and curvature
+  information) are deduced from this function. 
+  
+  You may want to use the latter method `acc_step` if you run out of memory when
+  training your neural network model using `step` or if you want to evaluate the
+  target function value (the loss), gradient and curvature on different data
+  sets. The `acc_step` method allows you to specify (potentially different)
+  lists of data for these three quantities. It evaluates e.g. the gradient only
+  on one list entry (i.e. one mini-batch) at a time and `acc`umulates the
+  individual gradients automatically. This iterative approach slows down the
+  computations but enables us to work with very large data sets. 
 
 
-### Requirements
-
-For the examples, you also need DeepOBS. TODO
-
-
-### References
+## References
 
 [1] "Deep learning via Hessian-free optimization" by James Martens. In
     Proceedings of the 27th International Conference on International Conference
@@ -116,3 +165,4 @@ For the examples, you also need DeepOBS. TODO
     Kyunghyun Cho, Surya Ganguli and Yoshua Bengio. In Advances in Neural
     Information Processing Systems, 2020. Paper available at
     https://arxiv.org/abs/1406.2572 (accessed June 2022).
+  
