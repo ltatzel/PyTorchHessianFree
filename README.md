@@ -7,10 +7,19 @@ by GitHub-user `fmeirinhos` served as a starting point. For the matrix-vector
 products with the Hessian or GGN, we use functionality from the BackPACK
 [package](https://backpack.pt/) [3].
 
+### Table of contents
+1. [Installation instructions](#installation)
+2. [Example](#example)
+3. [Structure of this repo](#structure)
+4. [Contributing](#contributing)
+5. [Implementation details](#details)
+6. [References](#references)
 
-## Installation instructions
+---
 
-If you want to use the optimizer, you can download it from GitHub via `git clone
+## 1. Installation instructions <a name="installation"></a>
+
+If you want to use the optimizer, you can download the repo from GitHub via `git clone
 https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the
 project folder `cd PyTorchHessianFree` and install it with `pip install -e .`.
 Additional requirements for the tests and examples can be installed via `pip
@@ -18,7 +27,7 @@ install -e ".[tests]"` and `pip install -e ".[examples]"` respectively. For
 running the tests, execute `pytest` from the repo's root directory.
 
 
-## Example
+## 2. Example <a name="example"></a>
 
 ```python:
 """A minimal working example using the `HessianFree` optimizer on a small neural
@@ -60,7 +69,7 @@ if __name__ == "__main__":
 ```
 
 
-## Structure of this repo
+## 3. Structure of this repo <a name="structure"></a>
 
 The repo contains three folders:
 - `hessianfree`: This folder contains all the optimizer's components (e.g. the
@@ -72,12 +81,12 @@ use the optimizer for training neural networks (using the `step` and `acc_step`
 method) and optimizing deterministic functions (e.g. the Rosenbrock function). 
 
 
-## Contributing
+## 4. Contributing <a name="contributing"></a>
 
 I would be very grateful for any feedback! If you have questions, a feature request, found a bug or have comments on how to improve the code, please don't hesitate to reach out to me.
 
 
-## Implementation Details
+## 5. Implementation details <a name="details"></a>
 
 - **Hessian & GGN:** Our implementation allows using either the Hessian matrix
   or the GGN as curvature matrix via the argument `curvature_opt` to the
@@ -141,7 +150,7 @@ I would be very grateful for any feedback! If you have questions, a feature requ
   computations but enables us to work with very large data sets. 
 
 
-## References
+## 6. References <a name="references"></a>
 
 [1] "Deep learning via Hessian-free optimization" by James Martens. In
     Proceedings of the 27th International Conference on International Conference
