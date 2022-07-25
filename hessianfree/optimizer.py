@@ -434,10 +434,11 @@ class HessianFree(torch.optim.Optimizer):
 
     def _adapt_damping(self, f_0, f_step, m_0, m_step):
         """Adapt the damping constant according to a Levenberg-Marquardt style
-        heuristic [1, section 4.1]. This heuristic is based on the "agreement"
-        between the actual reduction in the target function (when applying the
-        update step) and the improvement predicted by the quadratic model. Note
-        that this method changes the `self._group["damping"]` attribute.
+        heuristic [1, section 4.1], [2, Section 8.5]. This heuristic is based on
+        the "agreement" between the actual reduction in the target function
+        (when applying the update step) and the improvement predicted by the
+        quadratic model. Note that this method changes the
+        `self._group["damping"]` attribute.
 
         Args:
             f_0, f_step: The target function value at `0` (no update step, i.e.
