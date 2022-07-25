@@ -1,28 +1,40 @@
 # `PyTorchHessianFree` 
 
 Here, we provide a PyTorch implementation of the Hessian-free optimizer as
-described in [1] and [2] (references see below). The `pytorch-hessianfree`
+described in [1] and [2] (see below). This project is currently still being
+developed, so changes may be made at any time.
+
+**Core idea:** At each step, the  optimizer computes a local quadratic
+approximation of the target function and uses the conjugate gradient (cg) method
+to approximate its minimum (the Newton step). This method only requires access
+to matrix-vector products with the curvature matrix, which can be done without
+creating this matrix in memory explicitly. This makes the Hessian-free optimizer
+applicable for large problems with high-dimensional parameter spaces (e.g.
+training neural networks).
+
+**Credits:** The `pytorch-hessianfree`
 [repo](https://github.com/fmeirinhos/pytorch-hessianfree/blob/master/hessianfree.py)
 by GitHub-user `fmeirinhos` served as a starting point. For the matrix-vector
 products with the Hessian or GGN, we use functionality from the BackPACK
 [package](https://backpack.pt/) [3].
 
-### Table of contents
+**Table of contents:**
 1. [Installation instructions](#installation)
 2. [Example](#example)
 3. [Structure of this repo](#structure)
-4. [Contributing](#contributing)
-5. [Implementation details](#details)
+4. [Implementation details](#details)
+5. [Contributing](#contributing)
 6. [References](#references)
 
 ---
 
 ## 1. Installation instructions <a name="installation"></a>
 
-If you want to use the optimizer, you can download the repo from GitHub via `git clone
-https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the
+If you want to use the optimizer, you can download the repo from GitHub via `git
+clone https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the
 project folder `cd PyTorchHessianFree` and install it with `pip install -e .`.
-Additional requirements for the tests and examples can be installed via `pip
+
+Additional requirements for the **tests and examples** can be installed via `pip
 install -e ".[tests]"` and `pip install -e ".[examples]"` respectively. For
 running the tests, execute `pytest` from the repo's root directory.
 
@@ -81,12 +93,7 @@ use the optimizer for training neural networks (using the `step` and `acc_step`
 method) and optimizing deterministic functions (e.g. the Rosenbrock function). 
 
 
-## 4. Contributing <a name="contributing"></a>
-
-I would be very grateful for any feedback! If you have questions, a feature request, found a bug or have comments on how to improve the code, please don't hesitate to reach out to me.
-
-
-## 5. Implementation details <a name="details"></a>
+## 4. Implementation details <a name="details"></a>
 
 - **Hessian & GGN:** Our implementation allows using either the Hessian matrix
   or the GGN as curvature matrix via the argument `curvature_opt` to the
@@ -148,6 +155,13 @@ I would be very grateful for any feedback! If you have questions, a feature requ
   on one list entry (i.e. one mini-batch) at a time and `acc`umulates the
   individual gradients automatically. This iterative approach slows down the
   computations but enables us to work with very large data sets. 
+
+
+## 5. Contributing <a name="contributing"></a>
+
+I would be very grateful for any feedback! If you have questions, a feature
+request, found a bug or have comments on how to improve the code, please don't
+hesitate to reach out to me.
 
 
 ## 6. References <a name="references"></a>
