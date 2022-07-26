@@ -111,9 +111,9 @@ method) and optimizing deterministic functions (e.g. the Rosenbrock function).
   features the termination criterion presented in [1, Section 4.4] via the
   argument `martens_conv_crit`. 
   
-  It also offers ways to deal with non-positive directional curvature $p_i^\top
-  A p_i \leq 0$ (note that this is a violation of the assumption that $A$ is
-  positive definite) via the `nonpos_curv_option`-argument to the
+  It also offers ways to deal with non-positive directional curvature 
+  $p_i^\top A p_i \leq 0$ (note that this is a violation of the assumption that
+  $A$ is positive definite) via the `nonpos_curv_option`-argument to the
   `postprocess_pAp` function. For example, it allows using the absolute value of
   the directional curvature - this idea is discussed in detail in [4]. 
   
