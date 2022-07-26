@@ -178,8 +178,17 @@ class HessianFree(torch.optim.Optimizer):
                 (e.g. in the very first step).
         """
 
-        # Set state
-        self.state.setdefault("x0", None)
+        # Use state to exchange and track information over multiple steps
+        state = self.state
+        state.setdefault("x0", None)
+
+        state.setdefault("init_losses", [])
+        state.setdefault("final_losses", [])
+        state.setdefault("dampings", [])
+        state.setdefault("cg_reasons", [])
+        state.setdefault("num_cg_iters", [])
+        state.setdefault("best_cg_iters", [])
+        state.setdefault("lrs", [])
 
         # ----------------------------------------------------------------------
         # Print some information
@@ -208,6 +217,7 @@ class HessianFree(torch.optim.Optimizer):
         init_loss = loss.item()
         if self.verbose:
             print(f"\nInitial loss = {init_loss:.6f}")
+        state["init_losses"].append(init_loss)
 
         # Evaluate the gradient
         if grad is None:
@@ -237,6 +247,7 @@ class HessianFree(torch.optim.Optimizer):
         # Apply (preconditioned) cg
         # ----------------------------------------------------------------------
         damping = self._group["damping"]
+        state["dampings"].append(damping)
         cg_max_iter = self._group["cg_max_iter"]
 
         # Only store the initial and final solution (i.e. use `[0]`); if cg-
@@ -244,16 +255,18 @@ class HessianFree(torch.optim.Optimizer):
         store_x_at_iters = None if self.use_cg_backtracking else [0]
 
         # Apply cg
-        x_iters, m_iters, reason = cg(
+        x_iters, m_iters, cg_reason = cg(
             A=lambda x: mvp(x) + damping * x,  # Add damping
             b=-grad,
-            x0=self.state["x0"],
+            x0=state["x0"],
             M=M_func,
             max_iter=cg_max_iter,
             martens_conv_crit=True,
             store_x_at_iters=store_x_at_iters,
             verbose=self.verbose,
         )
+        state["cg_reasons"].append(cg_reason)
+        state["num_cg_iters"].append(len(x_iters) - 1)  # `x0` also in list
         step_vec = x_iters[-1]
 
         # Initialize the next cg-run with the decayed current solution (not the
@@ -293,6 +306,7 @@ class HessianFree(torch.optim.Optimizer):
                 steps_list=x_iters,
                 verbose=self.verbose,
             )
+            state["best_cg_iters"].append(best_cg_iter)
             step_vec = x_iters[best_cg_iter]
 
         # ----------------------------------------------------------------------
@@ -315,6 +329,7 @@ class HessianFree(torch.optim.Optimizer):
                 init_alpha=lr,
                 verbose=self.verbose,
             )
+        state["lrs"].append(lr)
 
         # ----------------------------------------------------------------------
         # Parameter update
@@ -330,6 +345,8 @@ class HessianFree(torch.optim.Optimizer):
         if self.verbose:
             if final_loss is None:
                 final_loss = forward()[0].item()
+            state["final_losses"].append(final_loss)
+
             msg = f"Initial loss = {init_loss:.6f} --> "
             msg += f"final loss = {final_loss:.6f}"
             print(msg)

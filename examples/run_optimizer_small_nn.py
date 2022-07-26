@@ -1,5 +1,6 @@
 """In this example, we train a small neural network on some dummy data using the
-`HessianFree` optimizer with preconditioning.
+`HessianFree` optimizer with preconditioning. We also demonstrate how to access
+the optimizer's state after training.
 """
 
 import torch
@@ -41,3 +42,11 @@ if __name__ == "__main__":
             M_func=M_func,
             test_deterministic=True if step_idx == 0 else False,
         )
+
+    # Print state of optimizer after training
+    state_dict = opt.state_dict()["state"]
+    state_dict.pop("x0")
+
+    print("\nState...")
+    for key, val in state_dict.items():
+        print(f"  {key:15}: {val}")
