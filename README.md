@@ -41,7 +41,7 @@ running the tests, execute `pytest` from the repo's root directory.
 
 ## 2. Example <a name="example"></a>
 
-```python:
+```python
 """A minimal working example using the `HessianFree` optimizer on a small neural
 network and some dummy data.
 """
