@@ -244,7 +244,7 @@ class HessianFree(torch.optim.Optimizer):
         store_x_at_iters = None if self.use_cg_backtracking else [0]
 
         # Apply cg
-        x_iters, m_iters = cg(
+        x_iters, m_iters, reason = cg(
             A=lambda x: mvp(x) + damping * x,  # Add damping
             b=-grad,
             x0=self.state["x0"],

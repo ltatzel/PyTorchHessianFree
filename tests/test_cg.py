@@ -64,7 +64,7 @@ def test_cg_residuals(seed, dim, tol, atol, preconditioning, device):
         M_func = None
 
     # Apply cg until convergence
-    x_iters, _ = cg(
+    x_iters, _, _ = cg(
         A_func,
         b,
         M=M_func,
@@ -130,7 +130,7 @@ def test_cg_m_iters(seed, dim, x0_none, preconditioning, device):
         M_func = None
 
     # Apply cg (with default tolerances)
-    x_iters, m_iters = cg(
+    x_iters, m_iters, _ = cg(
         A_func,
         b,
         x0=x0,
@@ -192,7 +192,7 @@ def test_pcg(seed, dim, device):
     # Gather results with preconditioning
     x_list = []
     for M_func in [None, identity, A_inverse]:
-        x_iters, _ = cg(
+        x_iters, _, _ = cg(
             A_func,
             b,
             M=M_func,
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         return torch.matmul(A, x)
 
     # Apply cg
-    x_iters, m_iters = cg(
+    x_iters, m_iters, _ = cg(
         A_func,
         b,
         M=None,

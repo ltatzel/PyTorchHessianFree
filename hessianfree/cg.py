@@ -59,6 +59,9 @@ def cg(
         m_iters (list): If `martens_conv_crit == True`, this list contains the
             values of the quadratic `0.5 x^T A x - b^T x` for all cg-iterations.
             Otherwise, it is `None`.
+        reason (str): The reason (as a string) for terminating cg, e.g.
+            `"Convergence (tolerances)"`, if cg converged. For other possible
+            outcomes see `_terminate_cg` below.
     """
 
     if verbose:
@@ -225,4 +228,4 @@ def cg(
 
     if not store_x:
         x_iters[-1] = x  # Overwrite `None` with final solution
-    return x_iters, m_iters
+    return x_iters, m_iters, reason
