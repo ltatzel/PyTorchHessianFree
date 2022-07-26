@@ -6,9 +6,9 @@ from copy import deepcopy
 
 import pytest
 import torch
-from hessianfree.optimizer import HessianFree
-
 from test_utils import get_small_nn_testproblem
+
+from hessianfree.optimizer import HessianFree
 
 
 def generate_datalist(N_list, device="cpu"):

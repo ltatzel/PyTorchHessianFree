@@ -2,9 +2,9 @@
 
 import pytest
 import torch
-from hessianfree.cg import cg
-
 from test_utils import get_linear_system
+
+from hessianfree.cg import cg
 
 SEEDS = [0, 1, 42]
 SEEDS_IDS = [f"seed = {s}" for s in SEEDS]

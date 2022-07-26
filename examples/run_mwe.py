@@ -3,6 +3,7 @@ network and some dummy data.
 """
 
 import torch
+
 from hessianfree.optimizer import HessianFree
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -2,14 +2,14 @@
 
 import pytest
 import torch
+from test_utils import get_small_nn_testproblem
+from torch.nn.utils.convert_parameters import parameters_to_vector
+
 from hessianfree.preconditioners import (
     diag_EF_autograd,
     diag_EF_backpack,
     diag_to_preconditioner,
 )
-from torch.nn.utils.convert_parameters import parameters_to_vector
-
-from test_utils import get_small_nn_testproblem
 
 
 def empirical_fisher_autograd(

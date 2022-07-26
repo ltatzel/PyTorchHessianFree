@@ -3,9 +3,9 @@ function.
 """
 
 import torch
-from hessianfree.optimizer import HessianFree
-
 from example_utils import TargetFuncModel
+
+from hessianfree.optimizer import HessianFree
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

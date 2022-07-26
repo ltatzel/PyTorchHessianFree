@@ -4,9 +4,9 @@ the optimizer's state after training.
 """
 
 import torch
-from hessianfree.optimizer import HessianFree
-
 from example_utils import get_small_nn_testproblem
+
+from hessianfree.optimizer import HessianFree
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

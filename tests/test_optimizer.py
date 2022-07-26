@@ -2,13 +2,13 @@
 
 import pytest
 import torch
-from hessianfree.optimizer import HessianFree
-
 from test_utils import (
     TargetFuncModel,
     get_linear_system,
     get_small_nn_testproblem,
 )
+
+from hessianfree.optimizer import HessianFree
 
 SEEDS = [0, 1, 42]
 SEEDS_IDS = [f"seed = {s}" for s in SEEDS]
