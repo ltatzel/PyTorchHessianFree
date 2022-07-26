@@ -280,6 +280,7 @@ class HessianFree(torch.optim.Optimizer):
         # Backup of original trainable parameters as vector
         params_vec = parameters_to_vector(self._params_list).detach()
 
+        @torch.no_grad()
         def tfunc(step):
             """Evaluate the target funtion that is to be minimized."""
             vector_to_trainparams(params_vec + step, self._params)
