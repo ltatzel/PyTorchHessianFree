@@ -6,7 +6,7 @@ DEEPOBS_LINK = (
 
 setup(
     name="hessianfree",
-    version="0.0",
+    version="0.1",
     description="PyTorch implementation of the Hessian-free optimizer",
     author="Lukas Tatzel",
     url="https://github.com/ltatzel/PyTorchHessianFree",
