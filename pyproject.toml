@@ -1,0 +1,13 @@
+# This file contains the configuration for the formatters
+
+[tool.black]
+line-length = 80
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+use_parentheses = true
+include_trailing_comma = true
+force_grid_wrap = 0
+ensure_newline_before_comments = true
+line_length = 80
