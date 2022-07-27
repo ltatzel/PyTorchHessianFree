@@ -13,6 +13,7 @@
 
 # DeepOBS data
 data_deepobs/
+data/
 
 # Distribution / packaging
 .Python

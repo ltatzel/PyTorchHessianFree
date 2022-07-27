@@ -2,15 +2,25 @@
 loss-functions).
 """
 
+import os
+
 import torch
+from deepobs.config import set_data_dir
 from deepobs.pytorch.runners.runner import PTRunner
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision.datasets import MNIST
+from torchvision.models import resnet18
+from torchvision.transforms import ToTensor
+
+# Create folder for the data, set DeepOBS data directory
+HERE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(HERE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+set_data_dir(DATA_DIR)
 
 
-def get_small_nn_testproblem(
-    batch_size=16,
-    freeze_first_layer=True,
-    device="cpu",
-):
+def get_small_nn_testproblem(batch_size=32, freeze_layer1=True, device="cpu"):
     """Set-up test problem: The model (a small neural network), data and loss-
     function.
     """
@@ -31,7 +41,7 @@ def get_small_nn_testproblem(
     ).to(device)
 
     # Freeze parameters of first layer --> some parameters not trainable
-    if freeze_first_layer:
+    if freeze_layer1:
         first_layer = next(model.children())
         for param in first_layer.parameters():
             param.requires_grad = False
@@ -46,7 +56,7 @@ def get_small_nn_testproblem(
     return model, (inputs, targets), loss_function
 
 
-def get_cifar100_testproblem(batch_size=32, seed=0, device="cpu"):
+def get_allcnnc_cifar100_testproblem(seed=0, batch_size=32, device="cpu"):
     """Set-up test problem: The model (ALLCNNC-network), train loader (CIFAR-100
     image data) and loss-function.
     """
@@ -69,6 +79,32 @@ def get_cifar100_testproblem(batch_size=32, seed=0, device="cpu"):
         loss = loss_func(outputs, targets)
         l2_loss = tproblem.get_regularization_loss()
         return loss + l2_loss
+
+    return model.to(device), train_loader, loss_function
+
+
+def get_resnet18_mnist_testproblem(batch_size=32, device="cpu"):
+    """Set-up test problem: The model (resnet18-network), train loader (MNIST
+    image data) and loss-function.
+    """
+
+    # Model
+    model = resnet18(num_classes=10)
+    model.conv1 = nn.Conv2d(
+        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+    )
+
+    # Training data
+    train_set = MNIST(
+        root=DATA_DIR,
+        train=True,
+        download=True,
+        transform=ToTensor(),
+    )
+    train_loader = iter(DataLoader(train_set, batch_size, shuffle=True))
+
+    # Loss-function
+    loss_function = nn.CrossEntropyLoss()
 
     return model.to(device), train_loader, loss_function
 
