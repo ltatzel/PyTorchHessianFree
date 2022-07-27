@@ -46,7 +46,7 @@ def get_small_nn_testproblem(
     return model, (inputs, targets), loss_function
 
 
-def get_cifar100_testproblem(batch_size=32, device="cpu"):
+def get_cifar100_testproblem(batch_size=32, seed=0, device="cpu"):
     """Set-up test problem: The model (ALLCNNC-network), train loader (CIFAR-100
     image data) and loss-function.
     """
@@ -56,7 +56,7 @@ def get_cifar100_testproblem(batch_size=32, device="cpu"):
         testproblem="cifar100_allcnnc",
         batch_size=batch_size,
         l2_reg=None,
-        random_seed=0,
+        random_seed=seed,
     )
 
     # Extract model, loss-function and data

@@ -14,10 +14,10 @@ if __name__ == "__main__":
 
     print(f"\nRunning example on DEVICE = {DEVICE}")
 
-    torch.manual_seed(0)
-
     # Set up problem and optimizer
-    model, train_loader, loss_function = get_cifar100_testproblem(device=DEVICE)
+    model, train_loader, loss_function = get_cifar100_testproblem(
+        seed=0, device=DEVICE
+    )
     train_loader = iter(train_loader)
     model.eval()  # for deterministic behavior
     opt = HessianFree(model.parameters(), verbose=True)
