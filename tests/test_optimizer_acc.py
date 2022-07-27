@@ -91,9 +91,7 @@ def test_test_reduction(seed, curvature_opt, reduction, device):
 
     # Create test problem
     torch.manual_seed(seed)
-    model, _, _ = get_small_nn_testproblem(
-        freeze_first_layer=True, device=device
-    )
+    model, _, _ = get_small_nn_testproblem(freeze_layer1=True, device=device)
     loss_function = torch.nn.MSELoss(reduction=reduction)
 
     # Create data lists
@@ -136,9 +134,7 @@ def test_step(seed, curvature_opt, reduction, N_list, device):
 
     # Create test problem with two identical models
     torch.manual_seed(seed)
-    model_1, _, _ = get_small_nn_testproblem(
-        freeze_first_layer=True, device=device
-    )
+    model_1, _, _ = get_small_nn_testproblem(freeze_layer1=True, device=device)
     model_2 = deepcopy(model_1)
     check_models_equal(model_1, model_2)
 

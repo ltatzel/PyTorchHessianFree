@@ -50,7 +50,7 @@ def test_on_neural_network(
     # Create test problem
     torch.manual_seed(seed)
     model, _, loss_function = get_small_nn_testproblem(
-        freeze_first_layer=True, device=device
+        freeze_layer1=True, device=device
     )
 
     # Set up optimizer

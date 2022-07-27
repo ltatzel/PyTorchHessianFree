@@ -70,7 +70,7 @@ def test_diag_EF(seed, reduction, N, device):
     # Create test problem
     torch.manual_seed(seed)
     model, data, _ = get_small_nn_testproblem(
-        N=N, freeze_first_layer=True, device=device
+        N=N, freeze_layer1=True, device=device
     )
     inputs, targets = data
     loss_function = torch.nn.MSELoss(reduction=reduction)

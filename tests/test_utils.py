@@ -16,11 +16,7 @@ def get_linear_system(dim, seed=0, device="cpu"):
     return A.to(device), b.to(device), x.to(device)
 
 
-def get_small_nn_testproblem(
-    N=16,
-    freeze_first_layer=True,
-    device="cpu",
-):
+def get_small_nn_testproblem(N=16, freeze_layer1=True, device="cpu"):
     """Set-up test problem: The model (a small neural network), data and loss-
     function.
     """
@@ -41,7 +37,7 @@ def get_small_nn_testproblem(
     ).to(device)
 
     # Freeze parameters of first layer --> some parameters not trainable
-    if freeze_first_layer:
+    if freeze_layer1:
         first_layer = next(model.children())
         for param in first_layer.parameters():
             param.requires_grad = False
