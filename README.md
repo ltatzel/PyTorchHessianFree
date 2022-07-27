@@ -154,7 +154,9 @@ method) and optimizing deterministic functions (e.g. the Rosenbrock function).
   lists of data for these three quantities. It evaluates e.g. the gradient only
   on one list entry (i.e. one mini-batch) at a time and `acc`umulates the
   individual gradients automatically. This iterative approach slows down the
-  computations but enables us to work with very large data sets. 
+  computations but enables us to work with very large data sets. A basic example
+  can be found
+  [here](https://github.com/ltatzel/PyTorchHessianFree/blob/740bd80346873a75f904bbba15f0737403a3d511/examples/run_small_nn_acc.py).
 
 
 ## 5. Contributing <a name="contributing"></a>
