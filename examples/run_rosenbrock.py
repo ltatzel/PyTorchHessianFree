@@ -14,8 +14,6 @@ if __name__ == "__main__":
 
     print(f"\nRunning example on DEVICE = {DEVICE}")
 
-    torch.manual_seed(0)
-
     # Set up problem
     init_params = torch.Tensor([-1.0, 3.0]).to(DEVICE)
     opt_params = torch.Tensor([1.0, 1.0])

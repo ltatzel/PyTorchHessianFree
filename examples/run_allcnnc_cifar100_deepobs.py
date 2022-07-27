@@ -3,7 +3,7 @@
 """
 
 import torch
-from example_utils import get_cifar100_testproblem
+from example_utils import get_allcnnc_cifar100_testproblem
 
 from hessianfree.optimizer import HessianFree
 
@@ -15,8 +15,8 @@ if __name__ == "__main__":
     print(f"\nRunning example on DEVICE = {DEVICE}")
 
     # Set up problem and optimizer
-    model, train_loader, loss_function = get_cifar100_testproblem(
-        seed=0, device=DEVICE
+    model, train_loader, loss_function = get_allcnnc_cifar100_testproblem(
+        seed=0, batch_size=32, device=DEVICE
     )
     train_loader = iter(train_loader)
     model.eval()  # for deterministic behavior
