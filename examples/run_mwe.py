@@ -18,7 +18,7 @@ if __name__ == "__main__":
         torch.nn.ReLU(),
         torch.nn.Linear(DIM, DIM),
     ).to(DEVICE)
-    loss_function = loss_function = torch.nn.MSELoss(reduction="mean")
+    loss_function = torch.nn.MSELoss()
     opt = HessianFree(model.parameters(), verbose=True)
 
     # Training
