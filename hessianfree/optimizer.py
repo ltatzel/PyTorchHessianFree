@@ -509,7 +509,7 @@ class HessianFree(torch.optim.Optimizer):
         self,
         model,
         loss_func,
-        forward_datalist,
+        loss_datalist,
         grad_datalist=None,
         mvp_datalist=None,
         M_func=None,
@@ -532,15 +532,15 @@ class HessianFree(torch.optim.Optimizer):
                 contained in `datalist` to `outputs`.
             loss_func (torch.nn.Module): The loss function mapping the tuple
                 `(outputs, targets)` to the loss value.
-            forward_datalist (list): A list of `(inputs, targets)`-tuples used
+            loss_datalist (list): A list of `(inputs, targets)`-tuples used
                 by the `forward` function (that evaluates the loss). `inputs`
                 and `targets` are `torch.Tensor`s.
             grad_datalist (list or None): A list of `(inputs, targets)`-tuples
                 used for the computation of the gradient. If this is `None` (the
-                default), the `forward_datalist` is used.
+                default), the `loss_datalist` is used.
             mvp_datalist (list or None): A list of `(inputs, targets)`-tuples
                 used for the computation of the matrix-vector products. If this
-                is `None` (the default), the `forward_datalist` is used.
+                is `None` (the default), the `loss_datalist` is used.
             M_func (callable or None): The preconditioner for cg. This is
                 supposed to be an approximation of the inverse of the damped (!)
                 curvature matrix, see the `step`-method for details.
@@ -555,12 +555,12 @@ class HessianFree(torch.optim.Optimizer):
                 details.
         """
 
-        # If not given, set the data lists to `forward_datalist`
+        # If not given, set the data lists to `loss_datalist`
         if grad_datalist is None:
-            grad_datalist = forward_datalist
+            grad_datalist = loss_datalist
 
         if mvp_datalist is None:
-            mvp_datalist = forward_datalist
+            mvp_datalist = loss_datalist
 
         curvature_opt = self._group["curvature_opt"]
 
@@ -568,54 +568,22 @@ class HessianFree(torch.optim.Optimizer):
         # Forward
         # ----------------------------------------------------------------------
         def forward():
-            """Evaluate the loss for all mini-batches and accumulate these
-            values to obtain the overall loss.
-            """
-
-            losses_list, _, N_list = self._forward_lists(
-                model,
-                loss_func,
-                forward_datalist,
-                device=self.device,
-                with_outputs=False,
-            )
-
             return (
-                self._acc_loss(losses_list, N_list, reduction),
+                self._acc_loss(model, loss_func, loss_datalist, reduction),
                 None,  # outputs are set to `None`
             )
 
         # ----------------------------------------------------------------------
         # Gradient
         # ----------------------------------------------------------------------
-
-        losses_list, _, N_list = self._forward_lists(
-            model,
-            loss_func,
-            grad_datalist,
-            self.device,
-            with_outputs=False,
-        )
-        grad = self._acc_grad(
-            losses_list, N_list, reduction, create_graph=False
-        )
+        grad = self._acc_grad(model, loss_func, grad_datalist, reduction)
 
         # ----------------------------------------------------------------------
         # Matrix-vector product
         # ----------------------------------------------------------------------
-
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model,
-            loss_func,
-            mvp_datalist,
-            self.device,
-            with_outputs=curvature_opt == "ggn",
-        )
-
-        # Matrix vector product
         def mvp(x):
             return self._acc_mvp(
-                losses_list, outputs_list, N_list, curvature_opt, reduction, x
+                model, loss_func, mvp_datalist, curvature_opt, reduction, x
             )
 
         # ----------------------------------------------------------------------
@@ -630,52 +598,11 @@ class HessianFree(torch.optim.Optimizer):
         )
 
     @staticmethod
-    def _forward_lists(model, loss_func, datalist, device, with_outputs=False):
-        """Evaluate the network's outputs, the corresponding losses and mini-
-        batch sizes for all mini-batches in `datalist`.
-
-        Args:
-            model (torch.nn.Module): The neural network mapping the `inputs`
-                contained in `datalist` to `outputs`.
-            loss_function (torch.nn.Module): The loss function mapping the tuple
-                `(outputs, targets)` to the loss value.
-            datalist (list): A list of `(inputs, targets)`-tuples.
-            device (torch.device): `inputs` and `targets` are moved to this
-                device before the forward pass is applied.
-            with_outputs (bool): If `True`, a list of the mini-batch outputs is
-                created and returned; if `False`, all list entries are `None`.
-
-        Returns:
-            losses_list (list): List containing the mini-batch loss values.
-            outputs_list (list) List containing the mini-batch outputs if
-                `with_outputs` is `True`; if `with_outputs == False`, all list
-                entries are `None`.
-            N_list (list): List containing the mini-batch sizes.
-        """
-
-        losses_list = []
-        outputs_list = []
-        N_list = []
-
-        for inputs, targets in datalist:
-            N_list.append(targets.shape[0])
-
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
-            losses_list.append(loss_func(outputs, targets))
-
-            if with_outputs:
-                outputs_list.append(outputs)
-            else:
-                outputs_list.append(None)
-
-        return losses_list, outputs_list, N_list
-
-    @staticmethod
     def _acc(
-        losses_list,
-        outputs_list,
-        N_list,
+        model,
+        loss_func,
+        datalist,
+        device,
         init_result,
         eval_mb,
         reduction,
@@ -706,20 +633,31 @@ class HessianFree(torch.optim.Optimizer):
         if reduction not in ["mean", "sum"]:
             raise ValueError(f"Invalid reduction {reduction}")
 
-        # Accumulate results using the `eval_mb` function
-        num_data = sum(N_list)
+        # Initialize result and total number of data points
         result = init_result
-        for loss, outputs, N in zip(losses_list, outputs_list, N_list):
+        num_data = 0
+
+        # Accumulate results using the `eval_mb` function
+        for inputs, targets in datalist:
+            N = targets.shape[0]
+            num_data += N
+
+            # Forward pass
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            loss = loss_func(outputs, targets)
+
+            # Compute result on mini-batch and add to result
             mb_result = eval_mb(loss, outputs)
             if reduction == "mean":
-                result += (N / num_data) * mb_result
+                result += N * mb_result
             else:
                 result += mb_result
 
         # Return result
-        return result
+        return result / num_data if reduction == "mean" else result
 
-    def _acc_loss(self, losses_list, N_list, reduction):
+    def _acc_loss(self, model, loss_func, datalist, reduction):
         """Accumulate the loss.
 
         Args:
@@ -743,15 +681,16 @@ class HessianFree(torch.optim.Optimizer):
             return loss
 
         return self._acc(
-            losses_list,
-            [None] * len(losses_list),
-            N_list,
+            model,
+            loss_func,
+            datalist,
+            device=self.device,
             init_result=0.0,
             eval_mb=eval_mb_loss,
             reduction=reduction,
         )
 
-    def _acc_grad(self, losses_list, N_list, reduction, create_graph=False):
+    def _acc_grad(self, model, loss_func, datalist, reduction):
         """Accumulate the gradient.
 
         Args:
@@ -779,26 +718,20 @@ class HessianFree(torch.optim.Optimizer):
 
         def eval_mb_grad(loss, outputs):
             """Compute the mini-batch gradient for `loss`."""
-            if not create_graph:
-                mb_grad = torch.autograd.grad(loss, self._params_list)
-            else:
-                mb_grad = torch.autograd.grad(
-                    loss, self._params_list, create_graph=True
-                )
+            mb_grad = torch.autograd.grad(loss, self._params_list)
             return parameters_to_vector(mb_grad).detach()
 
         return self._acc(
-            losses_list,
-            [None] * len(losses_list),
-            N_list,
+            model,
+            loss_func,
+            datalist,
+            device=self.device,
             init_result=init_grad,
             eval_mb=eval_mb_grad,
             reduction=reduction,
         )
 
-    def _acc_mvp(
-        self, losses_list, outputs_list, N_list, curvature_opt, reduction, x
-    ):
+    def _acc_mvp(self, model, loss_func, datalist, curvature_opt, reduction, x):
         """Accumulate the matrix-vector product.
 
         Args:
@@ -833,9 +766,10 @@ class HessianFree(torch.optim.Optimizer):
                 return self._Gv(loss, outputs, self._params_list, x)
 
         return self._acc(
-            losses_list,
-            outputs_list,
-            N_list,
+            model,
+            loss_func,
+            datalist,
+            device=self.device,
             init_result=init_mvp,
             eval_mb=eval_mb_mvp,
             reduction=reduction,
@@ -884,23 +818,11 @@ class HessianFree(torch.optim.Optimizer):
         # Compute loss, gradient, matrix-vector product on `datalist`
         # ----------------------------------------------------------------------
 
-        # Forward pass
         curvature_opt = self._group["curvature_opt"]
-        with_outputs = True if curvature_opt == "ggn" else False
-        losses_list, outputs_list, N_list = self._forward_lists(
-            model,
-            loss_func,
-            datalist,
-            device=self.device,
-            with_outputs=with_outputs,
-        )
-
-        acc_loss = self._acc_loss(losses_list, N_list, reduction)
-        acc_grad = self._acc_grad(
-            losses_list, N_list, reduction, create_graph=True
-        )
+        acc_loss = self._acc_loss(model, loss_func, datalist, reduction)
+        acc_grad = self._acc_grad(model, loss_func, datalist, reduction)
         acc_mvp = self._acc_mvp(
-            losses_list, outputs_list, N_list, curvature_opt, reduction, x
+            model, loss_func, datalist, curvature_opt, reduction, x
         )
 
         # ----------------------------------------------------------------------

@@ -38,14 +38,14 @@ if __name__ == "__main__":
         print(f"\n===== STEP {step_idx} =====")
 
         # Sample new dummy data
-        forward_datalist = generate_datalist([2, 3])
+        loss_datalist = generate_datalist([2, 3])
         grad_datalist = generate_datalist([3, 4, 1])
         mvp_datalist = generate_datalist([3, 1, 5])
 
         opt.acc_step(
             model,
             loss_function,
-            forward_datalist,
+            loss_datalist,
             grad_datalist,
             mvp_datalist,
             test_deterministic=True if step_idx == 0 else False,
