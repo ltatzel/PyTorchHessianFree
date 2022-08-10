@@ -521,11 +521,16 @@ class HessianFree(torch.optim.Optimizer):
         of mini-batches. These lists may differ! In this regard, this method is
         more flexible than `step` and its "iterative" computations (the results
         are accumulated over the chunks of data) allow to use very large batch
-        sizes.
+        sizes. However, due to more sequential work, this method is slower than
+        `step`. If `step` is applicable, it should therefore be preferred. Also
+        note that, so far, all quantities (loss, gradient, mvp) are computed
+        independently without exchanging information. This results in redundant
+        work, e.g. if all quantities are computed on the same data, the same
+        forward pass is executed multiple times.
 
-        It is balically a wrapper for `step` that creates the `forward`-
-        function, the gradient and the `mvp`-function automatically based on the
-        `model`, `loss_func` and data.
+        This method is balically a wrapper for `step` that creates the
+        `forward`- function, the gradient and the `mvp`-function automatically
+        based on the `model`, `loss_func` and data lists.
 
         Args:
             model (torch.nn.Module): The neural network mapping the `inputs`
@@ -533,8 +538,8 @@ class HessianFree(torch.optim.Optimizer):
             loss_func (torch.nn.Module): The loss function mapping the tuple
                 `(outputs, targets)` to the loss value.
             loss_datalist (list): A list of `(inputs, targets)`-tuples used
-                by the `forward` function (that evaluates the loss). `inputs`
-                and `targets` are `torch.Tensor`s.
+                by for the computation of the loss. `inputs` and `targets` are
+                `torch.Tensor`s.
             grad_datalist (list or None): A list of `(inputs, targets)`-tuples
                 used for the computation of the gradient. If this is `None` (the
                 default), the `loss_datalist` is used.
@@ -564,31 +569,23 @@ class HessianFree(torch.optim.Optimizer):
 
         curvature_opt = self._group["curvature_opt"]
 
-        # ----------------------------------------------------------------------
         # Forward
-        # ----------------------------------------------------------------------
         def forward():
             return (
                 self._acc_loss(model, loss_func, loss_datalist, reduction),
                 None,  # outputs are set to `None`
             )
 
-        # ----------------------------------------------------------------------
         # Gradient
-        # ----------------------------------------------------------------------
         grad = self._acc_grad(model, loss_func, grad_datalist, reduction)
 
-        # ----------------------------------------------------------------------
         # Matrix-vector product
-        # ----------------------------------------------------------------------
         def mvp(x):
             return self._acc_mvp(
                 model, loss_func, mvp_datalist, curvature_opt, reduction, x
             )
 
-        # ----------------------------------------------------------------------
         # Compute the optimization step
-        # ----------------------------------------------------------------------
         self.step(
             forward=forward,
             grad=grad,
@@ -607,18 +604,23 @@ class HessianFree(torch.optim.Optimizer):
         eval_mb,
         reduction,
     ):
-        """This function allows to accumulate some quantity `result` over
-        multiple iterations.
+        """This function allows to accumulate some quantity `result` (the loss,
+        gradient or mvp in our case) over multiple mini-batches.
 
         Args:
-            losses_list (list): List containing mini-batch loss-values.
-            outputs_list (list): List containing mini-batch outputs.
-            N_list (list): List containing mini-batch sizes.
+            model (torch.nn.Module): The neural network mapping the `inputs`
+                contained in `datalist` to `outputs`.
+            loss_func (torch.nn.Module): The loss function mapping the tuple
+                `(outputs, targets)` to the loss value.
+            datalist (list): A list of `(inputs, targets)`-tuples used
+                for the evaluation of the mini-batch results. `inputs` and
+                `targets` are `torch.Tensor`s.
+            device (torch.device): `inputs` and `targets` are moved to this
+                device before the forward pass is applied.
             init_result: `results` will be initialized with this value. It has
                 to be compatible with the output of `eval_mb`.
             eval_mb (callable): This function accepts two inputs: A mini-
-                batch loss value (an entry of `losses_list`) and mini-batch
-                outputs (an entry of `outputs_list`).
+                batch loss value and the mini-batch outputs.
             reduction (str): Either `"mean"` or `"sum"`. The result is updated
                 using the `eval_mb`-function as follows:
                 - `results += eval_mb(...)` if `reduction == "sum"`
@@ -661,16 +663,21 @@ class HessianFree(torch.optim.Optimizer):
         """Accumulate the loss.
 
         Args:
-            losses_list (list): List containing mini-batch loss-values.
-            N_list (list): List containing mini-batch sizes.
+            model (torch.nn.Module): The neural network mapping the `inputs`
+                contained in `datalist` to `outputs`.
+            loss_func (torch.nn.Module): The loss function mapping the tuple
+                `(outputs, targets)` to the loss value.
+            datalist (list): A list of `(inputs, targets)`-tuples used
+                for the evaluation of the loss. `inputs` and `targets` are
+                `torch.Tensor`s.
             reduction (str): Either `"mean"` or `"sum"`. The returned loss is
                 the sum of
-                - all loss-values in `losses_list` if `reduction == "sum"`. This
+                - all mini-batch loss-values if `reduction == "sum"`. This
                   results in the sum of the individual per-data loss-values.
-                - all loss-values in `losses_list` scaled by `N / num_data`,
-                  where `N` is the mini-batch size and `num_data` is the total
-                  number of datapoints over all mini-batches. This results in
-                  the average of the individual per-data loss-values.
+                - all mini-batch loss-values scaled by `N / num_data`, where `N`
+                  is the mini-batch size and `num_data` is the total number of
+                  datapoints over all mini-batches. This results in the average
+                  of the individual per-data loss-values.
 
         Returns:
             The accumulated loss-value.
@@ -694,9 +701,13 @@ class HessianFree(torch.optim.Optimizer):
         """Accumulate the gradient.
 
         Args:
-            losses_list (list): List containing mini-batch loss-values.
-            outputs_list (list): List containing mini-batch outputs.
-            N_list (list): List containing mini-batch sizes.
+            model (torch.nn.Module): The neural network mapping the `inputs`
+                contained in `datalist` to `outputs`.
+            loss_func (torch.nn.Module): The loss function mapping the tuple
+                `(outputs, targets)` to the loss value.
+            datalist (list): A list of `(inputs, targets)`-tuples used
+                for the evaluation of the gradient. `inputs` and `targets` are
+                `torch.Tensor`s.
             reduction (str): Either `"mean"` or `"sum"`. The returned gradient
                 is the sum of
                 - all mini-batch gradients if `reduction == "sum"`. This
@@ -705,10 +716,6 @@ class HessianFree(torch.optim.Optimizer):
                   is the mini-batch size and `num_data` is the total number of
                   datapoints over all mini-batches. This results in the average
                   of the individual per-data gradients.
-            create_graph (bool): If `True`, the mini-batch gradients will be
-                computed with the `create_graph=True` option. This is necessary
-                if we want to re-use `losses_list` for computing higher order
-                derivatives.
 
         Returns:
             The accumulated gradient vector.
@@ -735,9 +742,13 @@ class HessianFree(torch.optim.Optimizer):
         """Accumulate the matrix-vector product.
 
         Args:
-            losses_list (list): List containing mini-batch loss-values.
-            outputs_list (list): List containing mini-batch outputs.
-            N_list (list): List containing mini-batch sizes.
+            model (torch.nn.Module): The neural network mapping the `inputs`
+                contained in `datalist` to `outputs`.
+            loss_func (torch.nn.Module): The loss function mapping the tuple
+                `(outputs, targets)` to the loss value.
+            datalist (list): A list of `(inputs, targets)`-tuples used
+                for the evaluation of the mvp. `inputs` and `targets` are
+                `torch.Tensor`s.
             curvature_opt (str): Either `"ggn"` or `"hessian"`.
             reduction (str): Either `"mean"` or `"sum"`. The returned matrix-
                 vector product is the sum of
@@ -835,8 +846,8 @@ class HessianFree(torch.optim.Optimizer):
         for inputs, targets in datalist:
             inputs_list.append(inputs)
             targets_list.append(targets)
-        ref_inputs = torch.cat(inputs_list, dim=0)
-        ref_targets = torch.cat(targets_list, dim=0)
+        ref_inputs = torch.cat(inputs_list, dim=0).to(self.device)
+        ref_targets = torch.cat(targets_list, dim=0).to(self.device)
 
         # Forward pass
         ref_outputs = model(ref_inputs)
