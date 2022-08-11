@@ -600,6 +600,7 @@ class HessianFree(torch.optim.Optimizer):
         loss_func,
         datalist,
         device,
+        with_grad,
         init_result,
         eval_mb,
         reduction,
@@ -617,6 +618,9 @@ class HessianFree(torch.optim.Optimizer):
                 `targets` are `torch.Tensor`s.
             device (torch.device): `inputs` and `targets` are moved to this
                 device before the forward pass is applied.
+            with_grad (bool): If `True`, build the graph for the backpropagation
+                when performing the forward pass. The resulting loss and outputs
+                are given to `eval_mb`.
             init_result: `results` will be initialized with this value. It has
                 to be compatible with the output of `eval_mb`.
             eval_mb (callable): This function accepts two inputs: A mini-
@@ -643,11 +647,20 @@ class HessianFree(torch.optim.Optimizer):
         for inputs, targets in datalist:
             N = targets.shape[0]
             num_data += N
-
-            # Forward pass
             inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
-            loss = loss_func(outputs, targets)
+
+            def forward_pass():
+                """Perform the forward pass"""
+                outputs = model(inputs)
+                loss = loss_func(outputs, targets)
+                return loss, outputs
+
+            # Forward pass with or without building the graph
+            if with_grad:
+                loss, outputs = forward_pass()
+            else:
+                with torch.no_grad():
+                    loss, outputs = forward_pass()
 
             # Compute result on mini-batch and add to result
             mb_result = eval_mb(loss, outputs)
@@ -685,13 +698,14 @@ class HessianFree(torch.optim.Optimizer):
 
         def eval_mb_loss(loss, outputs):
             """Return the mini-batch loss."""
-            return loss
+            return loss.detach()
 
         return self._acc(
             model,
             loss_func,
             datalist,
             device=self.device,
+            with_grad=False,
             init_result=0.0,
             eval_mb=eval_mb_loss,
             reduction=reduction,
@@ -733,6 +747,7 @@ class HessianFree(torch.optim.Optimizer):
             loss_func,
             datalist,
             device=self.device,
+            with_grad=True,
             init_result=init_grad,
             eval_mb=eval_mb_grad,
             reduction=reduction,
@@ -772,15 +787,16 @@ class HessianFree(torch.optim.Optimizer):
         def eval_mb_mvp(loss, outputs):
             """Compute the matrix-vector product with `x`."""
             if curvature_opt == "hessian":
-                return self._Hv(loss, self._params_list, x)
+                return self._Hv(loss, self._params_list, x).detach()
             elif curvature_opt == "ggn":
-                return self._Gv(loss, outputs, self._params_list, x)
+                return self._Gv(loss, outputs, self._params_list, x).detach()
 
         return self._acc(
             model,
             loss_func,
             datalist,
             device=self.device,
+            with_grad=True,
             init_result=init_mvp,
             eval_mb=eval_mb_mvp,
             reduction=reduction,
