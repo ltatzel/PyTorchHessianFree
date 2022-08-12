@@ -885,34 +885,33 @@ class HessianFree(torch.optim.Optimizer):
         # Tests: Compare both approaches
         # ----------------------------------------------------------------------
 
+        # Test tolerances
+        RTOL = 1e-3
+        ATOL = 1e-6
+
+        check_quantities = [
+            ("loss values", ref_loss, acc_loss),
+            ("gradients", ref_grad, acc_grad),
+            ("mvps", ref_mvp, acc_mvp),
+        ]
+
         tests_passed = True
 
-        # Check loss values
-        if self.verbose:
-            print("  Test loss values")
-        if not torch.allclose(acc_loss, ref_loss):
-            if self.verbose:
-                print("  Loss values differ")
-            tests_passed = False
+        for quantity, ref, acc in check_quantities:
 
-        # Check gradients
-        if self.verbose:
-            print("  Test gradients")
-        if not torch.allclose(acc_grad, ref_grad):
-            if self.verbose:
-                print("  Gradients differ")
-            tests_passed = False
-
-        # Check matrix-vector products
-        if self.verbose:
-            print("  Test matrix-vector products")
-        if not torch.allclose(acc_mvp, ref_mvp):
-            if self.verbose:
-                print("  Matrix-vector products differ")
-            tests_passed = False
+            # Perform check `ref` == `acc`
+            if not torch.allclose(acc, ref, rtol=RTOL, atol=ATOL):
+                if self.verbose:
+                    print(f"  Test {quantity}: failed")
+                tests_passed = False
+            else:  # Results match
+                if self.verbose:
+                    print(f"  Test {quantity}: passed")
 
         if not tests_passed:
-            error_msg = f"Inconsistent results for reduction {reduction}"
+            error_msg = f"Inconsistent results for reduction {reduction}. "
+            error_msg += "This could also be the result of non-deterministic "
+            error_msg += "behavior."
             raise RuntimeError(error_msg)
         else:
             if self.verbose:
