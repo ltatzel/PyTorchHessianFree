@@ -379,20 +379,22 @@ class HessianFree(torch.optim.Optimizer):
 
         # Check outputs
         if outputs_1 is not None and outputs_2 is not None:
-            if self.verbose:
-                print("  Test outputs")
             if not torch.allclose(outputs_1, outputs_2):
                 if self.verbose:
-                    print("  Outputs non-deterministic")
+                    print("  Test outputs: failed")
                 deterministic = False
+            else:
+                if self.verbose:
+                    print("  Test outputs: passed")
 
         # Check loss values
-        if self.verbose:
-            print("  Test loss values")
         if not torch.allclose(loss_1, loss_2):
             if self.verbose:
-                print("  Loss values non-deterministic")
+                print("  Test loss values: failed")
             deterministic = False
+        else:
+            if self.verbose:
+                print("  Test loss values: passed")
 
         if not deterministic:
             msg = "Non-determinisitc behaviour detected. Consider setting your "
@@ -417,7 +419,6 @@ class HessianFree(torch.optim.Optimizer):
 
         if self.verbose:
             print("\nTest deterministic behavior of `mvp`...")
-        deterministic = True
 
         # Compute matrix-vector product
         x = torch.randn_like(parameters_to_vector(self._params_list))
@@ -428,15 +429,15 @@ class HessianFree(torch.optim.Optimizer):
         # Check matrix-vector products
         if not torch.allclose(mvp_1, mvp_2):
             if self.verbose:
-                print("  Matrix-vector product non-deterministic")
-            deterministic = False
+                print("  Test mvps: failed")
 
-        if not deterministic:
+            # Raise warning
             msg = "Non-determinisitc behaviour detected. Consider setting your "
             msg += "model to evaluation mode, i.e. `model.eval()`."
             warn(msg)
         else:
             if self.verbose:
+                print("  Test mvps: passed")
                 print("  All tests passed")
 
     @staticmethod
