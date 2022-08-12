@@ -589,7 +589,7 @@ class HessianFree(torch.optim.Optimizer):
             )
 
         # Compute the optimization step
-        self.step(
+        return self.step(
             forward=forward,
             grad=grad,
             mvp=mvp,
