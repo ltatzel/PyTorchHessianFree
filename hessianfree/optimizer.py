@@ -352,6 +352,9 @@ class HessianFree(torch.optim.Optimizer):
             msg += f"final loss = {final_loss:.6f}"
             print(msg)
 
+        # Return the final mini-batch loss
+        return final_loss
+
     def _test_forward_determinisitc(self, forward):
         """Test if the behavior of the `forward` function is deterministic: Call
         this function two times and check if the retuned values are identical.
