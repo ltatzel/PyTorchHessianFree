@@ -188,7 +188,7 @@ class HessianFree(torch.optim.Optimizer):
         state.setdefault("cg_reasons", [])
         state.setdefault("num_cg_iters", [])
         state.setdefault("best_cg_iters", [])
-        state.setdefault("lrs", [])
+        state.setdefault("learning_rates", [])
 
         # ----------------------------------------------------------------------
         # Print some information
@@ -330,7 +330,7 @@ class HessianFree(torch.optim.Optimizer):
                 init_alpha=lr,
                 verbose=self.verbose,
             )
-        state["lrs"].append(lr)
+        state["learning_rates"].append(lr)
 
         # ----------------------------------------------------------------------
         # Parameter update
