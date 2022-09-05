@@ -97,7 +97,7 @@ def simple_linesearch(
             f_alpha_step = f(alpha * step)
 
     # No suitable update found
-    warn("[linesearch]: No suitable update could be found.")
+    warn("No suitable update could be found by the line search.")
     if verbose:
         print(f"No significant improvement. Using alpha = {0.0:.6f}")
     return 0.0, f_0
