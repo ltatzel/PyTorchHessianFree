@@ -887,8 +887,8 @@ class HessianFree(torch.optim.Optimizer):
         # ----------------------------------------------------------------------
 
         # Test tolerances
-        RTOL = 1e-3
-        ATOL = 1e-6
+        RTOL = 1e-2
+        ATOL = 1e-4
 
         check_quantities = [
             ("loss values", ref_loss, acc_loss),
