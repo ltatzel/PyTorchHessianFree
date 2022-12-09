@@ -112,13 +112,7 @@ method) and optimizing deterministic functions (e.g. the Rosenbrock function).
   features the termination criterion presented in [1, Section 4.4] via the
   argument `martens_conv_crit`. 
   
-  It also offers ways to deal with non-positive directional curvature 
-  $p_i^\top A p_i \leq 0$ (note that this is a violation of the assumption that
-  $A$ is positive definite) via the `nonpos_curv_option`-argument to the
-  `postprocess_pAp` function. For example, it allows using the absolute value of
-  the directional curvature - this idea is discussed in detail in [4]. 
-  
-  As suggested in [1, Section 4.5], we use the cg- "solution" from the last step
+  As suggested in [1, Section 4.5], we use the cg-"solution" from the last step
   as a starting point for the next one. Via the argument `cg_decay_x0` to the
   optimizer's constructor, this initial search direction can be scaled by a
   constant. The default is `0.95` as in [2, Section 10].
@@ -151,7 +145,8 @@ method) and optimizing deterministic functions (e.g. the Rosenbrock function).
   You may want to use the latter method `acc_step` if you run out of memory when
   training your neural network model using `step` or if you want to evaluate the
   target function value (the loss), gradient and curvature on different data
-  sets. The `acc_step` method allows you to specify (potentially different)
+  sets (this is actually recommended since it reduces mini-batch overfitting).
+  The `acc_step` method allows you to specify (potentially different)
   lists of data for these three quantities. It evaluates e.g. the gradient only
   on one list entry (i.e. one mini-batch) at a time and `acc`umulates the
   individual gradients automatically. This iterative approach slows down the
@@ -185,10 +180,3 @@ hesitate to reach out to me.
     2020. Paper available at https://openreview.net/forum?id=BJlrF24twB
     (accessed June 2022). Python package available at
     https://github.com/f-dangel/backpack.
-
-[4] "Identifying and attacking the saddle point problem in high-dimensional
-    non-convex optimization" by Yann Dauphin, Razvan Pascanu, Caglar Gulcehre,
-    Kyunghyun Cho, Surya Ganguli and Yoshua Bengio. In Advances in Neural
-    Information Processing Systems, 2020. Paper available at
-    https://arxiv.org/abs/1406.2572 (accessed June 2022).
-  
