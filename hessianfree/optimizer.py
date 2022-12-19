@@ -912,7 +912,7 @@ class HessianFree(torch.optim.Optimizer):
         if not tests_passed:
             error_msg = f"Inconsistent results for reduction {reduction}. "
             error_msg += "This could also be the result of non-deterministic "
-            error_msg += "behavior."
+            error_msg += "behavior or simply due to using the GPU."
             raise RuntimeError(error_msg)
         else:
             if self.verbose:
