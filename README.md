@@ -30,9 +30,11 @@ products with the Hessian or GGN, we use functionality from the BackPACK
 
 ## 1. Installation instructions <a name="installation"></a>
 
-If you want to use the optimizer, you can download the repo from GitHub via `git
-clone https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the
-project folder `cd PyTorchHessianFree` and install it with `pip install -e .`.
+If you want to use the optimizer, you can download the repo from GitHub via `git clone
+https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the project folder
+`cd PyTorchHessianFree` and install it with `pip install -e .`. Or install the package
+directly from GitHub via `pip install hessianfree
+git+https://git@github.com/ltatzel/PyTorchHessianFree.git@main`. 
 
 Additional requirements for the **tests and examples** can be installed via `pip
 install -e ".[tests]"` and `pip install -e ".[examples]"` respectively. For
