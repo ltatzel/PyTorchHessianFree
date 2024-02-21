@@ -13,7 +13,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "backpack-for-pytorch>=1.5.0,<2.0.0",
-        "torch>=1.11.0,<2.0.0",
+        "torch>=1.11.0",
     ],
     extras_require={
         "tests": [  # install with `pip install -e ".[tests]"`
