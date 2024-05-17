@@ -6,6 +6,8 @@ from copy import deepcopy
 
 import pytest
 import torch
+from torch.autograd.functional import hessian
+
 from test_utils import get_small_nn_testproblem
 
 from hessianfree.optimizer import HessianFree
@@ -73,6 +75,41 @@ REDUCTIONS_IDS = [f"reduction = {r}" for r in REDUCTIONS]
 
 NUM_MVPS = 5  # Number of matrix-vector products (with random vector)
 
+
+def test_step_preconditioning():
+    """
+    Tests that the step function does not apply the gradients,
+    but only preconditions them (replace g with H^{-1}*g).
+    """
+    parameter1 = torch.tensor([[1.], [2.], [3.]], requires_grad=True)
+    in_data = torch.Tensor([[4., 5., 6.], [2., 3., 4.]])
+    optimizer = HessianFree(
+        [parameter1],
+        cg_max_iter=50,
+        lr=0.0,
+        use_cg_backtracking=False,
+        damping=0.0,
+        adapt_damping=False,
+        curvature_opt="hessian"
+    )
+    sum_layer = torch.tensor([[1., 1.]])
+    def model():
+        outputs = in_data @ parameter1**2
+        loss = (sum_layer @ outputs)**2
+        return loss, outputs
+
+    def model_hessian(param1):
+        return (sum_layer @ in_data @ (param1.reshape(parameter1.shape) ** 2)) ** 2
+
+    loss, _ = model()
+    loss.backward()
+
+    actual_hessian = hessian(model_hessian, (parameter1.reshape(-1),))
+    unpreconditioned_grad = parameter1.grad
+    expected_grad = actual_hessian[0][0].inverse() @ unpreconditioned_grad
+    optimizer.step(model)
+
+    assert torch.allclose(expected_grad, parameter1.grad.data)
 
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
 @pytest.mark.parametrize("curvature_opt", CURV_OPTS, ids=CURV_OPTS_IDS)
@@ -178,6 +215,8 @@ def test_step(seed, curvature_opt, reduction, N_list, device):
 if __name__ == "__main__":
 
     reduction = "sum"
+
+    test_step_preconditioning()
 
     test_test_reduction(
         seed=0, curvature_opt="ggn", reduction=reduction, device="cpu"

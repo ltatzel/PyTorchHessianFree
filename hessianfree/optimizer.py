@@ -315,32 +315,45 @@ class HessianFree(torch.optim.Optimizer):
         # ----------------------------------------------------------------------
         lr = self._group["lr"]
 
-        if not self.use_linesearch:
-            # Constant learning rate
-            if self.verbose:
-                print(f"\nConstant lr = {lr:.6f}")
-            final_loss = None  # Has to be evaluated
+        final_loss = None  # Has to be evaluated
+        if lr == 0.0:
+            pointer = 0
+            for param in self._params_list:
+                num_param = param.numel()
+                if param.requires_grad:
+                    param.grad.data = -step_vec[pointer: pointer + num_param].view_as(param).data
+                    pointer += num_param
 
+            # Make sure all entries of the vector have been used (i.e. that `vec` and
+            # `parameters` have the same number of elements)
+            if pointer != len(step_vec):
+                warn("Not all entries of `vec` have been used.")
         else:
-            # Perform line search
-            lr, final_loss = simple_linesearch(
-                f=tfunc,
-                f_grad_0=grad,
-                step=step_vec,
-                init_alpha=lr,
-                verbose=self.verbose,
-            )
-        state["learning_rates"].append(lr)
+            if not self.use_linesearch:
+                # Constant learning rate
+                if self.verbose:
+                    print(f"\nConstant lr = {lr:.6f}")
+            else:
+                # Perform line search
+                lr, final_loss = simple_linesearch(
+                    f=tfunc,
+                    f_grad_0=grad,
+                    step=step_vec,
+                    init_alpha=lr,
+                    verbose=self.verbose,
+                )
+            state["learning_rates"].append(lr)
 
-        # ----------------------------------------------------------------------
-        # Parameter update
-        # ----------------------------------------------------------------------
+            # ----------------------------------------------------------------------
+            # Parameter update
+            # ----------------------------------------------------------------------
 
-        # Update parameters
-        if self.verbose:
-            print(f"\nParameter update with lr = {lr:.6f}")
-        new_params_vec = params_vec + lr * step_vec
-        vector_to_trainparams(new_params_vec, self._params)
+
+            # Update parameters
+            if self.verbose:
+                print(f"\nParameter update with lr = {lr:.6f}")
+            new_params_vec = params_vec + lr * step_vec
+            vector_to_trainparams(new_params_vec, self._params)
 
         # Print initial and final loss
         if self.verbose:
