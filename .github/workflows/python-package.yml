@@ -18,7 +18,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.8'  # Specify the Python version you want to use
+        python-version: '3.8'
 
     - name: Install dependencies
       run: |
@@ -26,7 +26,22 @@ jobs:
         pip install -e .
         pip install -e ".[tests]"
         pip install -e ".[examples]"
+        pip install -e ".[dev]"
 
     - name: Run tests
       run: |
         pytest
+
+    - name: Run examples
+      run: |
+        python examples/run_allcnnc_cifar100_deepobs.py
+        python examples/run_mwe.py
+        python examples/run_resnet18_mnist.py
+        python examples/run_rosenbrock.py
+        python examples/run_small_nn_acc.py
+        python examples/run_small_nn.py
+
+    - name: Run formatters
+      run: |
+        black .
+        isort .

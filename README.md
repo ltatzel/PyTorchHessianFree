@@ -36,9 +36,9 @@ https://github.com/ltatzel/PyTorchHessianFree.git`. Then, navigate to the projec
 directly from GitHub via `pip install hessianfree
 git+https://git@github.com/ltatzel/PyTorchHessianFree.git@main`. 
 
-Additional requirements for the **tests and examples** can be installed via `pip
-install -e ".[tests]"` and `pip install -e ".[examples]"` respectively. For
-running the tests, execute `pytest` from the repo's root directory.
+Additional requirements for the **tests, examples and dev** can be installed via `pip
+install -e ".[tests]"`, `pip install -e ".[examples]"` or `pip install -e ".[dev]"`,
+respectively. For running the tests, execute `pytest` from the repo's root directory.
 
 
 ## 2. Example <a name="example"></a>

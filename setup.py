@@ -23,5 +23,9 @@ setup(
         "examples": [  # install with `pip install -e ".[examples]"`
             "deepobs @ " + DEEPOBS_LINK,
         ],
+        "dev": [  # install with `pip install -e ".[dev]"`
+            "black",
+            "isort",
+        ],
     },
 )
