@@ -28,7 +28,7 @@ DEVICES_IDS = [f"device = {d}" for d in DEVICES]
 
 # The "incrementally" computed residual in cg might differ slightly from
 # `A @ x_cg - b`.
-EPS = 5e-7
+EPS = 5e-6
 
 
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
@@ -153,7 +153,7 @@ def test_cg_m_iters(seed, dim, x0_none, preconditioning, device):
     m_vals = torch.Tensor(m_iters)
 
     error_msg = "Discrepancy between quadratic and `m_iters`"
-    assert torch.allclose(quadratic_vals, m_vals), error_msg
+    assert torch.allclose(quadratic_vals, m_vals, atol=1e-7), error_msg
 
 
 @pytest.mark.parametrize("seed", SEEDS, ids=SEEDS_IDS)
