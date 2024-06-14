@@ -92,7 +92,7 @@ def diag_EF_autograd(model, loss_function, inputs, targets, reduction):
 
     # Compute individual gradients, square and add to `sum_grad2`
     diag_EF = torch.zeros_like(parameters_to_vector(params_list))
-    for (input_i, target_i) in zip(inputs, targets):
+    for input_i, target_i in zip(inputs, targets):
         loss_i = loss_function(model(input_i), target_i)
         grad_i = torch.autograd.grad(loss_i, params_list, retain_graph=False)
         diag_EF += parameters_to_vector(grad_i) ** 2

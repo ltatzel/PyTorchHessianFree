@@ -22,7 +22,7 @@ def empirical_fisher_autograd(
 
     # Compute individual gradients, add outer product to `F`
     F = torch.zeros((num_params, num_params)).to(device)
-    for (input_i, target_i) in zip(inputs, targets):
+    for input_i, target_i in zip(inputs, targets):
         loss_i = loss_function(model(input_i), target_i)
         grad_i = torch.autograd.grad(loss_i, params_list, retain_graph=False)
         grad_i = parameters_to_vector(grad_i)
