@@ -1,5 +1,6 @@
 """Pytorch implementation of the Hessian-free optimizer."""
 
+from contextlib import nullcontext
 from warnings import warn
 
 import torch
@@ -213,7 +214,13 @@ class HessianFree(torch.optim.Optimizer):
             self._test_forward_determinisitc(forward)
 
         # Forward pass
-        loss, outputs = forward()
+        # for custom `mvp`s and gradients, loss and outputs can be non-differentiable
+        with (
+            torch.no_grad()
+            if grad is not None and mvp is not None
+            else nullcontext()
+        ):
+            loss, outputs = forward()
         init_loss = loss.item()
         if self.verbose:
             print(f"\nInitial loss = {init_loss:.6f}")
