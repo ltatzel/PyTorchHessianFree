@@ -11,6 +11,7 @@ setup(
     author="Lukas Tatzel",
     url="https://github.com/ltatzel/PyTorchHessianFree",
     packages=find_packages(),
+    python_requires=">=3.7",
     install_requires=[
         "backpack-for-pytorch>=1.5.0,<2.0.0",
         "torch>=1.11.0",
